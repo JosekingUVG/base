@@ -1,0 +1,19 @@
+# Carpeta de compilación
+build/
+
+# Caché de Zig
+.zig-cache/
+zig-pkg
+zig-out
+
+#agents
+.codex_test
+
+# Binarios 
+*.exe
+*.o
+*.obj
+*.dll
+*.so
+*.dylib
+tatus --short
