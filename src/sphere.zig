@@ -1,4 +1,6 @@
+const std = @import("std");
 const rl = @import("raylib");
+
 const Intersect = @import("raytracer.zig").Intersect;
 const Material = @import("raytracer.zig").Material;
 
@@ -7,39 +9,72 @@ pub const Sphere = struct {
     radius: f32,
     material: Material,
 
-    pub fn intersect(self: Sphere, origin: rl.Vector3, direction: rl.Vector3) ?Intersect {
-        //https://en.wikipedia.org/wiki/Line%E2%80%93sphere_intersection
+    /// Convierte un punto de la esfera unitaria en coordenadas UV.
+    fn calculateUV(normal: rl.Vector3) rl.Vector2 {
+        const u =
+            0.5 +
+            std.math.atan2(f32, normal.z, normal.x) /
+                (2.0 * std.math.pi);
+
+        // Evita pequeños errores donde normal.y sea 1.000001,
+        // algo que produciría un valor inválido en asin.
+        const safe_y = @max(-1.0, @min(1.0, normal.y));
+
+        const v =
+            0.5 -
+            std.math.asin(safe_y) /
+                std.math.pi;
+
+        return .{
+            .x = u,
+            .y = v,
+        };
+    }
+
+    pub fn intersect(
+        self: Sphere,
+        origin: rl.Vector3,
+        direction: rl.Vector3,
+    ) ?Intersect {
         // origin - center
         const center_to_origin = origin.subtract(self.center);
 
-        // Estos son a,b y c como en ax^2 + bx + c = 0
+        const b = 2.0 * direction.dotProduct(center_to_origin);
 
-        // const a = direction.dotProduct(direction);
-        // a siempre es 1 si direction esta normalizado
+        const c =
+            center_to_origin.dotProduct(center_to_origin) -
+            self.radius * self.radius;
 
-        const b = 2 * direction.dotProduct(center_to_origin);
-        const c = center_to_origin.dotProduct(center_to_origin) - self.radius * self.radius;
-
-        // const discriminante = b * b - 4.0 * a * c;
         const discriminante = b * b - 4.0 * c;
-        if (discriminante > 0) {
-            const solucion = (-b - @sqrt(discriminante)) / 2;
-            // const solucion = (-b + @sqrt(discriminante)) / 2;
+
+        if (discriminante >= 0) {
+            const solucion = (-b - @sqrt(discriminante)) / 2.0;
+
             if (solucion > 0) {
-                // punto = origin + direccion*escala;
-                const point = origin.add(direction.scale(solucion));
-                // Normal se refiere a la normal de la superficie de la forma
-                // asumiendo que la esfera es perfectamente esferica,
-                // normal es la direccion desde el centro de la esfera al punto que calculamos
-                const norm = point.subtract(self.center).normalize();
+                // Punto exacto donde el rayo golpeó la esfera.
+                const point = origin.add(
+                    direction.scale(solucion),
+                );
+
+                // Dirección desde el centro hasta el punto.
+                const normal = point
+                    .subtract(self.center)
+                    .normalize();
+
+                // La normal también representa la posición del punto
+                // sobre una esfera unitaria, por eso permite calcular UV.
+                const uv = calculateUV(normal);
+
                 return .{
                     .Material = self.material,
                     .Distancia = solucion,
-                    .Normal = norm,
+                    .Normal = normal,
                     .Punto = point,
+                    .UV = uv,
                 };
             }
         }
+
         return null;
     }
 };
