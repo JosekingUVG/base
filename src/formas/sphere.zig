@@ -1,8 +1,8 @@
 const std = @import("std");
 const rl = @import("raylib");
 
-const Intersect = @import("raytracer.zig").Intersect;
-const Material = @import("raytracer.zig").Material;
+const Intersect = @import("../raytracer/raytracer.zig").Intersect;
+const Material = @import("../raytracer/raytracer.zig").Material;
 
 pub const Sphere = struct {
     center: rl.Vector3,
@@ -13,7 +13,7 @@ pub const Sphere = struct {
     fn calculateUV(normal: rl.Vector3) rl.Vector2 {
         const u =
             0.5 +
-            std.math.atan2(f32, normal.z, normal.x) /
+            std.math.atan2(normal.z, normal.x) /
                 (2.0 * std.math.pi);
 
         // Evita pequeños errores donde normal.y sea 1.000001,

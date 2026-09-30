@@ -2,16 +2,16 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const rl = @import("raylib");
-const Framebuffer = @import("framebuffer.zig").Framebuffer;
-const Forma = @import("formas.zig").Forma;
-const Camera = @import("camera.zig").Camera;
-const Light = @import("raytracer.zig").Light;
-const Intersect = @import("raytracer.zig").Intersect;
-const Material = @import("raytracer.zig").Material;
+const Framebuffer = @import("dominio/framebuffer.zig").Framebuffer;
+const Forma = @import("formas/formas.zig").Forma;
+const Camera = @import("dominio/camera.zig").Camera;
+const Light = @import("raytracer/raytracer.zig").Light;
+const Intersect = @import("raytracer/raytracer.zig").Intersect;
+const Material = @import("raytracer/raytracer.zig").Material;
 
-const htmlColor = @import("cute_colors.zig").htmlColor;
-const V3FromColor = @import("raytracer.zig").V3FromColor;
-const V3ToColor = @import("raytracer.zig").V3ToColor;
+const htmlColor = @import("raytracer/cute_colors.zig").htmlColor;
+const V3FromColor = @import("raytracer/raytracer.zig").V3FromColor;
+const V3ToColor = @import("raytracer/raytracer.zig").V3ToColor;
 
 const Clock = std.Io.Clock.real;
 

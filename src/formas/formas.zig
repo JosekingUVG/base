@@ -1,4 +1,4 @@
-const Intersect = @import("raytracer.zig").Intersect;
+const Intersect = @import("../raytracer/raytracer.zig").Intersect;
 const rl = @import("raylib");
 
 const Sphere = @import("sphere.zig").Sphere;

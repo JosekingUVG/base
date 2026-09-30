@@ -1,7 +1,7 @@
 const rl = @import("raylib");
 
-const Intersect = @import("raytracer.zig").Intersect;
-const Material = @import("raytracer.zig").Material;
+const Intersect = @import("../raytracer/raytracer.zig").Intersect;
+const Material = @import("../raytracer/raytracer.zig").Material;
 
 pub const Vertex = struct {
     position: rl.Vector3,
