@@ -17,3 +17,21 @@ zig-out
 *.so
 *.dylib
 tatus --short
+
+# Archivos dentro de assets:
+# 1. Ignorar todos los archivos .zip dentro de assets/
+assets/*.zip
+
+# 2. Ignorar todo el contenido del asset pack por defecto
+assets/kenny_cube_pets/**
+
+# 3. Permitir el acceso a la carpeta Models y Textures (necesario para buscar dentro)
+!assets/kenny_cube_pets/Models/
+!assets/kenny_cube_pets/Models/OBJ_format/
+!assets/kenny_cube_pets/Models/Textures/
+
+# 4. Excluir todo dentro de OBJ_format excepto los archivos .obj
+assets/kenny_cube_pets/Models/OBJ_format/*
+!assets/kenny_cube_pets/Models/OBJ_format/*.obj
+!assets/kenny_cube_pets/Models/OBJ_format/Textures
+
