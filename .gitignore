@@ -32,6 +32,6 @@ assets/kenny_cube_pets/**
 
 # 4. Excluir todo dentro de OBJ_format excepto los archivos .obj
 assets/kenny_cube_pets/Models/OBJ_format/*
-!assets/kenny_cube_pets/Models/OBJ_format/*.obj
-!assets/kenny_cube_pets/Models/OBJ_format/Textures
+# !assets/kenny_cube_pets/Models/OBJ_format/*.obj
+# !assets/kenny_cube_pets/Models/OBJ_format/Textures
 
