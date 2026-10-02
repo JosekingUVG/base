@@ -313,81 +313,142 @@ fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, l
         }
     }
 
-    // Si encontramos una intersección, calculamos el color del píxel en función de la luz y el material del objeto intersectado
     if (closest_hit) |hit| {
-        const mat = hit.Material; // material del objeto intersectado
-        var color: rl.Vector3 = .zero(); // vector que representa el color del píxel, inicializado a negro
+        const mat = hit.Material;
 
-        // Desde el punto a la cámara
+        // Primero averiguamos cuál es el color propio de este punto.
+        //
+        // Si el material tiene textura:
+        //     usa hit.UV para leer un píxel.
+        //
+        // Si no tiene textura:
+        //     usa mat.Color.
+        const surface_color = mat.surfaceColor(hit.UV);
+
+        // Aquí acumularemos luz, reflejos y refracción.
+        var color: rl.Vector3 = .zero();
+
+        // Dirección desde el punto hacia la cámara.
         const view_direction = direction.scale(-1);
 
-        // si el objeto tiene propiedades de reflexión
         if (mat.Propiedades.Reflectividad > 0) {
             if (max_recursion > 0) {
-                const reflect_direction = rl.Vector3.reflect(direction, hit.Normal);
-                const new_og = hit.Punto; // Esto puede hacer que topemos con la misma figura
-                // Eso es malo
-                const reflect_color = cast_ray(new_og, reflect_direction, objects, lights, max_recursion - 1);
-                color = color.add(reflect_color.scale(mat.Propiedades.Reflectividad));
-            } else {
-                // Refleja el fondo
-                color = color.add(.zero());
+                const reflect_direction =
+                    rl.Vector3.reflect(direction, hit.Normal);
+
+                // Pequeño desplazamiento para no volver a golpear
+                // inmediatamente la misma superficie.
+                const new_origin =
+                    hit.Punto.add(hit.Normal.scale(0.001));
+
+                const reflect_color = cast_ray(
+                    new_origin,
+                    reflect_direction,
+                    objects,
+                    lights,
+                    max_recursion - 1,
+                );
+
+                color = color.add(
+                    reflect_color.scale(
+                        mat.Propiedades.Reflectividad,
+                    ),
+                );
             }
         }
 
-        // si el objeto tiene propiedades de transparencia
         if (mat.Propiedades.Transparencia > 0) {
             if (max_recursion > 0) {
+                if (refract(
+                    direction,
+                    hit.Normal,
+                    mat.Refractive_index,
+                )) |refract_direction| {
+                    // Para refractar debemos entrar al objeto,
+                    // por eso avanzamos contra la normal.
+                    const new_origin =
+                        hit.Punto.subtract(hit.Normal.scale(0.001));
 
-                // Ley de Snell:
-                //
-                if (refract(direction, hit.Normal, mat.Refractive_index)) |refract_direction| {
-                    const new_og = hit.Punto; // Esto puede hacer que topemos con la misma figura
-                    // Eso es malo
-                    const refract_color = cast_ray(new_og, refract_direction, objects, lights, max_recursion - 1);
-                    color = color.add(refract_color.scale(mat.Propiedades.Transparencia));
-                } else {
-                    const reflect_direction = rl.Vector3.reflect(direction, hit.Normal);
-                    const new_og = hit.Punto; // Esto puede hacer que topemos con la misma figura
-                    // Eso es malo
-                    const reflect_color = cast_ray(new_og, reflect_direction, objects, lights, max_recursion - 1);
-                    color = color.add(reflect_color.scale(mat.Propiedades.Reflectividad));
+                    const refract_color = cast_ray(
+                        new_origin,
+                        refract_direction,
+                        objects,
+                        lights,
+                        max_recursion - 1,
+                    );
+
+                    color = color.add(
+                        refract_color.scale(
+                            mat.Propiedades.Transparencia,
+                        ),
+                    );
                 }
-            } else {
-                // Refleja el fondo
-                color = color.add(.zero());
             }
         }
 
-        // Calculamos la iluminación difusa y especular de cada luz en la escena, teniendo en cuenta si el punto está en sombra o no
         for (lights) |light| {
-            if (obscured(hit.Punto, light, objects, hit.Normal))
+            if (obscured(
+                hit.Punto,
+                light,
+                objects,
+                hit.Normal,
+            )) {
                 continue;
+            }
 
-            // La dirección del punto a la luz
-            const light_dir = (light.Position.subtract(hit.Punto)).normalize();
+            const light_dir =
+                light.Position.subtract(hit.Punto).normalize();
 
-            // ¿Cómo sabemos qué tan "bien" nos pega la luz?
-            const diffuse_intensity = @max(light_dir.dotProduct(hit.Normal), 0) * light.Intensity;
+            const diffuse_intensity =
+                @max(
+                    light_dir.dotProduct(hit.Normal),
+                    0,
+                ) * light.Intensity;
 
-            const diffuse = mat.Color.scale(diffuse_intensity);
+            const illuminated_surface = rl.Vector3{
+                .x = surface_color.x * light.Color.x,
+                .y = surface_color.y * light.Color.y,
+                .z = surface_color.z * light.Color.z,
+            };
 
-            // Dirección a la que reflejamos la luz
-            const reflection_dir = rl.Vector3.reflect(light_dir.scale(-1), hit.Normal);
+            const diffuse =
+                illuminated_surface.scale(diffuse_intensity);
 
-            // ¿Qué tan liso es nuestro objeto?
-            // ¿Qué tan intensa y precisa es su relfexión especular?
-            const specular_intensity = std.math.pow(f32, @max(view_direction.dotProduct(reflection_dir), 0), mat.Especular) * light.Intensity;
+            // Antes usabas mat.Color.
+            // Ahora usamos el color del punto de la textura
+            // o el color normal del material.
 
-            const specular = light.Color.scale(specular_intensity);
+            const reflection_dir = rl.Vector3.reflect(
+                light_dir.scale(-1),
+                hit.Normal,
+            );
 
-            // El cómo mezclar los objetos es más al gusto.
-            color = color.add(diffuse.scale(mat.Propiedades.Albedo));
-            color = color.add(specular.scale(mat.Propiedades.Especular));
+            const specular_intensity =
+                std.math.pow(
+                    f32,
+                    @max(
+                        view_direction.dotProduct(reflection_dir),
+                        0,
+                    ),
+                    mat.Especular,
+                ) * light.Intensity;
+
+            const specular =
+                light.Color.scale(specular_intensity);
+
+            color = color.add(
+                diffuse.scale(mat.Propiedades.Albedo),
+            );
+
+            color = color.add(
+                specular.scale(mat.Propiedades.Especular),
+            );
         }
 
         return color;
-    } else return .zero();
+    }
+
+    return V3FromColor(htmlColor("#87ceeb"));
 }
 
 fn obscured(origin: rl.Vector3, light: Light, objects: []const Forma, normal: rl.Vector3) bool {

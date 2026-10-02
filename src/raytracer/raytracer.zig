@@ -1,4 +1,5 @@
 const rl = @import("raylib");
+const Texture = @import("textures.zig").Texture;
 
 pub fn V3FromColor(src: rl.Color) rl.Vector3 {
     const x: f32 = @floatFromInt(src.r);
@@ -25,6 +26,7 @@ pub const Material = struct {
     Color: rl.Vector3,
     Especular: f32,
     Refractive_index: f32,
+    Texture: ?*const Texture = null,
     // proporciones, de 0 a 1, de cuanto refleja y cuanto deja pasar la luz
     Propiedades: struct {
         Albedo: f32,
@@ -32,6 +34,17 @@ pub const Material = struct {
         Reflectividad: f32,
         Transparencia: f32,
     },
+
+    pub fn surfaceColor(
+        self: Material,
+        uv: rl.Vector2,
+    ) rl.Vector3 {
+        if (self.Texture) |texture| {
+            return texture.sample(uv);
+        }
+
+        return self.Color;
+    }
 };
 
 pub const Intersect = struct {

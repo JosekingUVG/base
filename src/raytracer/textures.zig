@@ -1,6 +1,5 @@
 const std = @import("std");
 const rl = @import("raylib");
-const V3FromColor = @import("raytracer.zig").V3FromColor;
 
 pub const Texture = struct {
     width: usize,
