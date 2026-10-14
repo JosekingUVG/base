@@ -6,8 +6,12 @@ build/
 zig-pkg
 zig-out
 
-#agents
+# Agents
 .codex_test
+
+# Archivos Blender
+*.blend
+*.blend1
 
 # Binarios 
 *.exe
@@ -16,32 +20,22 @@ zig-out
 *.dll
 *.so
 *.dylib
-tatus --short
 
 # Archivos dentro de assets:
 # 1. Ignorar todos los archivos .zip dentro de assets/
 assets/*.zip
+assets/textures/
 
 # 2. Ignorar todo el contenido del asset pack por defecto
 assets/kenny_cube_pets/**
 
 # 3. Permitir el acceso a la carpeta Models y Textures (necesario para buscar dentro)
 !assets/kenny_cube_pets/Models/
-!assets/plane/rocky_terrain_02_disp_4k.png
-!assets/plane/textures/hinoki_planks_disp_4k.png
 !assets/kenny_cube_pets/Models/OBJ_format/
-!assets/kenny_cube_pets/Models/Textures/
 
 # 4. Excluir todo dentro de OBJ_format excepto los archivos .obj
 assets/kenny_cube_pets/Models/OBJ_format/*
-# !assets/kenny_cube_pets/Models/OBJ_format/*.obj
-# !assets/kenny_cube_pets/Models/OBJ_format/Textures
 
 # 5. Excluir todo dentro de Textures excepto los archivos .png
-assets/kenny_cube_pets/Models/Textures/*
-!assets/kenny_cube_pets/Models/Textures/*.png
-
-assets/textures/* 
-
-
-assets/plane/
+assets/kenny_cube_pets/plane/textures/*
+!assets/kenny_cube_pets/plane/textures/*.png
