@@ -20,6 +20,9 @@ const width = 1300;
 const height = 900;
 
 const block_sz = 100;
+const near_distance: f32 = 70;
+const min_distance: f32 = 15;
+const max_distance: f32 = 250;
 
 pub fn main() !void {
     // Variable para manejar la memoria de manera diferente dependiendo del modo de compilación
@@ -51,11 +54,12 @@ pub fn main() !void {
     rl.initWindow(width, height, "Raytracer!!!");
     rl.setTraceLogLevel(.warning);
     defer rl.closeWindow();
+    defer framebuffer.deinit();
     rl.setTargetFPS(60);
 
     var floor_texture = Texture.load(
         gpa,
-        "assets/kenny_cube_pets/Models/OBJ_format/Textures/colormap.png",
+        "assets/plane/textures/hinoki_planks_disp_4k.png",
     ) catch |err| {
         std.debug.print(
             "No se pudo cargar la textura: {}\n",
@@ -83,18 +87,19 @@ pub fn main() !void {
     };
 
     const floor_material = Material{
-        .Color = V3FromColor(htmlColor("#a14b0e")),
+        .Color = V3FromColor(htmlColor("#fff")),
         .Texture = &floor_texture,
 
+        // Propiedes extraidas de  https://www.lifeder.com/propiedades-opticas-materiales/ y https://gemini.com
         .Propiedades = .{
-            .Albedo = 0.5,
-            .Especular = 0.3,
-            .Reflectividad = 0.2,
+            .Albedo = 0.4,
+            .Especular = 0.5,
+            .Reflectividad = 0.1,
             .Transparencia = 0,
         },
 
-        .Especular = 10,
-        .Refractive_index = 0,
+        .Especular = 100,
+        .Refractive_index = 1.5,
     };
 
     // VIDRIO:
@@ -146,7 +151,7 @@ pub fn main() !void {
             .center = .{ .x = 12.5, .y = 0, .z = -60 },
             .radius = 5,
             .material = .{
-                .Color = V3FromColor(htmlColor("#4c1919")),
+                .Color = V3FromColor(htmlColor("#fff")),
                 .Propiedades = .{
                     .Albedo = 0.9,
                     .Especular = 0.1,
@@ -199,7 +204,7 @@ pub fn main() !void {
     const lights = [_]Light{
         .{
             // Corresponde a la luz roja que ilumina la escena desde arriba y a la derecha
-            .Color = V3FromColor(htmlColor("#40ff00")),
+            .Color = V3FromColor(htmlColor("#bc510e")),
             .Intensity = 1,
             .Position = .{ .x = 5, .y = 100, .z = 15 },
         },
@@ -211,7 +216,7 @@ pub fn main() !void {
         },
     };
 
-    const cameraDistance = 100;
+    var cameraDistance: f32 = 100;
     var camera: Camera = .init(.{
         .x = 0,
         .y = 0,
@@ -225,15 +230,19 @@ pub fn main() !void {
     const camera_y_angle_max = std.math.pi / 4.0;
     const camera_y_angle_min = -camera_y_angle_max;
 
+    var has_rendered = false;
+    var was_moving = false;
+
     while (!rl.windowShouldClose()) {
         defer {
             const now = Clock.now(io);
             delta = last_frame_time.durationTo(now).toMicroseconds();
             last_frame_time = now;
         }
-        framebuffer.clear();
-
         const dt: f32 = @as(f32, @floatFromInt(delta)) / 1_000_000;
+        const old_x_angle = camera_x_angle;
+        const old_y_angle = camera_y_angle;
+        const old_distance = cameraDistance;
 
         // Control de la cámara con las teclas WASD
         if (rl.isKeyDown(.a)) {
@@ -251,6 +260,11 @@ pub fn main() !void {
             camera_y_angle = @max(camera_y_angle_min, @min(camera_y_angle_max, camera_y_angle));
         }
 
+        const wheel = rl.getMouseWheelMove();
+        cameraDistance = std.math.clamp(cameraDistance - wheel * 5, min_distance, max_distance);
+        const moving = camera_x_angle != old_x_angle or
+            camera_y_angle != old_y_angle or cameraDistance != old_distance;
+
         // Actualizamos la posición de la cámara en función de los ángulos calculados
         camera.Postition.x = @cos(camera_x_angle) * cameraDistance;
         camera.Postition.y = @sin(camera_y_angle) * cameraDistance;
@@ -259,16 +273,24 @@ pub fn main() !void {
         // Hacemos que la cámara mire hacia el origen (0, 0, 0)
         camera.lookAt(.zero());
 
-        // Renderizamos la escena con las esferas, luces y cámara actuales
-        try render(&framebuffer, &spheres, &lights, camera);
+        // Durante el movimiento usamos bloques grandes. Al detenerse, refinamos
+        // una vez y reutilizamos esa imagen mientras la escena no cambie.
+        const needs_render = !has_rendered or moving or was_moving;
+        if (needs_render) {
+            const pixel_block: usize = if (moving) 4 else if (cameraDistance > near_distance) 2 else 1;
+            framebuffer.clear();
+            try render(&framebuffer, &spheres, &lights, camera, pixel_block);
+            has_rendered = true;
+        }
+        was_moving = moving;
 
         // Dibujamos el framebuffer en la ventana de Raylib
-        try framebuffer.swap_buffers();
+        try framebuffer.swap_buffers(needs_render);
     }
 }
 
 // Renderiza la escena en el framebuffer dado, usando las formas, luces y cámara proporcionadas
-fn render(target: *Framebuffer, objects: []const Forma, lights: []const Light, camera: Camera) !void {
+fn render(target: *Framebuffer, objects: []const Forma, lights: []const Light, camera: Camera, pixel_block: usize) !void {
     const width_f32: f32 = @floatFromInt(target.width);
     const height_f32: f32 = @floatFromInt(target.height);
 
@@ -280,8 +302,10 @@ fn render(target: *Framebuffer, objects: []const Forma, lights: []const Light, c
     // Iteramos sobre cada píxel de la pantalla y calculamos el color correspondiente usando ray tracing
     // La idea es que para cada píxel, generamos un rayo desde la cámara hacia el mundo 3D, y vemos qué objeto (si hay alguno) intersecta con ese rayo.
     // Luego calculamos el color del píxel en función de la luz y el material del objeto intersectado.
-    for (0..height) |screen_y| {
-        for (0..width) |screen_x| {
+    var screen_y: usize = 0;
+    while (screen_y < height) : (screen_y += pixel_block) {
+        var screen_x: usize = 0;
+        while (screen_x < width) : (screen_x += pixel_block) {
             const x_f32: f32 = @floatFromInt(screen_x);
             const y_f32: f32 = @floatFromInt(screen_y);
 
@@ -305,7 +329,12 @@ fn render(target: *Framebuffer, objects: []const Forma, lights: []const Light, c
 
             const col = cast_ray(camera.Postition, direction, objects, lights, 5);
             target.set_current_color(V3ToColor(col));
-            try target.set_pixel(@intCast(screen_x), @intCast(screen_y));
+            // Un rayo pinta el bloque completo, incluso en los bordes.
+            for (screen_y..@min(screen_y + pixel_block, height)) |y| {
+                for (screen_x..@min(screen_x + pixel_block, width)) |x| {
+                    try target.set_pixel(@intCast(x), @intCast(y));
+                }
+            }
         }
     }
 }

@@ -22,9 +22,12 @@ pub const Framebuffer = struct {
 
     pub fn clear(self: *Framebuffer) void {
         self.color_buff.clearBackground(self.background_color);
-        if (self.texture) |texture| {
-            rl.unloadTexture(texture);
-        }
+    }
+
+    pub fn deinit(self: *Framebuffer) void {
+        if (self.texture) |texture| rl.unloadTexture(texture);
+        rl.unloadImage(self.color_buff);
+        self.texture = null;
     }
 
     pub fn set_pixel(self: *Framebuffer, x: i32, y: i32) !void {
@@ -44,7 +47,14 @@ pub const Framebuffer = struct {
         if (!self.color_buff.exportToFile(@ptrCast(filename))) return error.CouldntWriteFile;
     }
 
-    pub fn swap_buffers(self: *Framebuffer) !void {
+    pub fn swap_buffers(self: *Framebuffer, image_changed: bool) !void {
+        // Transferimos la imagen a la GPU únicamente cuando recalculamos rayos.
+        if (image_changed or self.texture == null) {
+            const new_texture = try rl.loadTextureFromImage(self.color_buff);
+            if (self.texture) |old_texture| rl.unloadTexture(old_texture);
+            self.texture = new_texture;
+        }
+
         rl.beginDrawing();
         defer rl.endDrawing();
 
@@ -54,18 +64,9 @@ pub const Framebuffer = struct {
         // (La RAM del CPU vs la del GPU)
         // Para que la GPU pueda operar sobre una imagen, esta tiene que estar en la VRAM.
         // En este caso, solo estamos cargando a la GPU la imagen que dibujamos para poder mostrarla.
-        const texture = try rl.loadTextureFromImage(self.color_buff);
-        rl.drawTexture(texture, 0, 0, .white);
+        rl.drawTexture(self.texture.?, 0, 0, .white);
 
-        //Por lo general, el swap es entre 2 buffers. Uno es el que el usuario está viendo,
-        //mientras que escribimos en el otro para preparar nuestro siguiente frame.
-        //Cada uno de los frame buffers intercambian su rol.
-        //Sobrescribir es mucho más amigable para la computadora que tener que estar malabareando la memoria
-        //para crear, destruir y volver a crear buffers.
-
-        //¡Pero como nosotros insistimos en usar el CPU para dibujar los frames, no podemos hacer eso!
-        //Siempre tendremos que guardar la textura para luego poder borrarla en clean. Si no, nos quedamos sin memoria en la GPU.
-
-        self.texture = texture;
+        // endDrawing presenta la textura. La conservamos para los siguientes
+        // fotogramas y la sustituimos únicamente cuando cambió la imagen.
     }
 };
