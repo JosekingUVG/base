@@ -8,6 +8,7 @@ const Camera = @import("dominio/camera.zig").Camera;
 const Light = @import("raytracer/raytracer.zig").Light;
 const Intersect = @import("raytracer/raytracer.zig").Intersect;
 const Material = @import("raytracer/raytracer.zig").Material;
+const Texture = @import("raytracer/textures.zig").Texture;
 
 const htmlColor = @import("raytracer/cute_colors.zig").htmlColor;
 const V3FromColor = @import("raytracer/raytracer.zig").V3FromColor;
@@ -52,6 +53,18 @@ pub fn main() !void {
     defer rl.closeWindow();
     rl.setTargetFPS(60);
 
+    var floor_texture = Texture.load(
+        gpa,
+        "assets/kenny_cube_pets/Models/OBJ_format/Textures/colormap.png",
+    ) catch |err| {
+        std.debug.print(
+            "No se pudo cargar la textura: {}\n",
+            .{err},
+        );
+        return err;
+    };
+    defer floor_texture.deinit();
+
     var last_frame_time = Clock.now(io);
     // delta es la diferencia de tiempo entre el marco actual y el anterior
     var delta: i64 = 1;
@@ -66,6 +79,21 @@ pub fn main() !void {
             .Transparencia = 0,
         },
         .Especular = 100,
+        .Refractive_index = 0,
+    };
+
+    const floor_material = Material{
+        .Color = V3FromColor(htmlColor("#a14b0e")),
+        .Texture = &floor_texture,
+
+        .Propiedades = .{
+            .Albedo = 0.5,
+            .Especular = 0.3,
+            .Reflectividad = 0.2,
+            .Transparencia = 0,
+        },
+
+        .Especular = 10,
         .Refractive_index = 0,
     };
 
@@ -129,6 +157,22 @@ pub fn main() !void {
                 .Refractive_index = 0,
             },
         } },
+
+        // Plano:
+
+        .{ .Plane = .{
+            .p_0 = .{ .x = 0, .y = -5, .z = 0 },
+            .normal = .{ .x = 0, .y = 1, .z = 0 },
+
+            .u_axis = .{ .x = 1, .y = 0, .z = 0 },
+            .v_axis = .{ .x = 0, .y = 0, .z = 1 },
+
+            .u_size = 10,
+            .v_size = 10,
+
+            .material = floor_material,
+        } },
+
         .{ .Sphere = .{
             .center = .{ .x = 0, .y = 0, .z = 0 },
             .radius = 5,
@@ -155,7 +199,7 @@ pub fn main() !void {
     const lights = [_]Light{
         .{
             // Corresponde a la luz roja que ilumina la escena desde arriba y a la derecha
-            .Color = V3FromColor(htmlColor("#f00")),
+            .Color = V3FromColor(htmlColor("#40ff00")),
             .Intensity = 1,
             .Position = .{ .x = 5, .y = 100, .z = 15 },
         },
