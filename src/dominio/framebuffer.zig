@@ -1,3 +1,4 @@
+const std = @import("std");
 const rl = @import("raylib");
 
 pub const Framebuffer = struct {
@@ -21,7 +22,7 @@ pub const Framebuffer = struct {
     }
 
     pub fn clear(self: *Framebuffer) void {
-        self.color_buff.clearBackground(self.background_color);
+        @memset(self.pixels(), self.background_color);
     }
 
     pub fn deinit(self: *Framebuffer) void {
@@ -30,9 +31,17 @@ pub const Framebuffer = struct {
         self.texture = null;
     }
 
+    // genImageColor crea una imagen RGBA8 contigua. No cambiar su formato.
+    // En paralelo, cada trabajador debe tener filas exclusivas.
+    pub fn pixels(self: *const Framebuffer) []rl.Color {
+        std.debug.assert(self.color_buff.format == .uncompressed_r8g8b8a8);
+        const data: [*]rl.Color = @ptrCast(@alignCast(self.color_buff.data));
+        return data[0 .. @as(usize, @intCast(self.width)) * @as(usize, @intCast(self.height))];
+    }
+
     pub fn set_pixel(self: *Framebuffer, x: i32, y: i32) !void {
-        if (x >= self.width or y >= self.height) return error.BadCoordinates;
-        self.color_buff.drawPixel(x, y, self.current_color);
+        if (x < 0 or y < 0 or x >= self.width or y >= self.height) return error.BadCoordinates;
+        self.pixels()[@as(usize, @intCast(y)) * @as(usize, @intCast(self.width)) + @as(usize, @intCast(x))] = self.current_color;
     }
 
     pub fn set_background_color(self: *Framebuffer, color: rl.Color) void {
@@ -49,10 +58,10 @@ pub const Framebuffer = struct {
 
     pub fn swap_buffers(self: *Framebuffer, image_changed: bool) !void {
         // Transferimos la imagen a la GPU únicamente cuando recalculamos rayos.
-        if (image_changed or self.texture == null) {
-            const new_texture = try rl.loadTextureFromImage(self.color_buff);
-            if (self.texture) |old_texture| rl.unloadTexture(old_texture);
-            self.texture = new_texture;
+        if (self.texture) |texture| {
+            if (image_changed) rl.updateTexture(texture, self.color_buff.data);
+        } else {
+            self.texture = try rl.loadTextureFromImage(self.color_buff);
         }
 
         rl.beginDrawing();
@@ -67,6 +76,6 @@ pub const Framebuffer = struct {
         rl.drawTexture(self.texture.?, 0, 0, .white);
 
         // endDrawing presenta la textura. La conservamos para los siguientes
-        // fotogramas y la sustituimos únicamente cuando cambió la imagen.
+        // fotogramas y actualizamos sus datos cuando cambió la imagen.
     }
 };
