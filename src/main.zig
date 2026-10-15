@@ -25,6 +25,10 @@ const min_distance: f32 = 15;
 const max_distance: f32 = 250;
 
 pub fn main() !void {
+
+    // Implementación de la concurrencia, inspirado en https://akhil.sh/tutorials/zig/zig/concurrency_in_zig/
+    // Respaldado con chatgpt: https://chatgpt.com/share/e/6ad05fa5-fa94-83e8-b9f4-06f5b300f1f2
+
     // Variable para manejar la memoria de manera diferente dependiendo del modo de compilación
     var alloc = switch (builtin.mode) {
         // En modo debug, usamos un allocator que nos permite detectar fugas de memoria y errores de uso
@@ -109,29 +113,74 @@ pub fn main() !void {
     );
     defer mesh.deinit();
 
-    // Escala uniforme: conserva normales y UV y apoya el modelo en el piso.
-    const model_scale: f32 = 20;
-    var model_min = rl.Vector3{ .x = std.math.inf(f32), .y = std.math.inf(f32), .z = std.math.inf(f32) };
-    var model_max = rl.Vector3{ .x = -std.math.inf(f32), .y = -std.math.inf(f32), .z = -std.math.inf(f32) };
+    // 1. Medir el modelo tal como viene del OBJ.
+    // Buscamos una caja que contenga todos sus vértices:
+    // model_min es la esquina con las coordenadas menores;
+    // model_max es la esquina con las coordenadas mayores.
+    // Este recorrido solo lee posiciones, no modifica los triángulos.
+    const first_position = mesh.triangles[0].a.position; // loadObj rechaza mallas vacías.
+    var model_min = first_position;
+    var model_max = first_position;
+
     for (mesh.triangles) |triangle| {
-        for ([_]rl.Vector3{ triangle.a.position, triangle.b.position, triangle.c.position }) |p| {
-            model_min = .{ .x = @min(model_min.x, p.x), .y = @min(model_min.y, p.y), .z = @min(model_min.z, p.z) };
-            model_max = .{ .x = @max(model_max.x, p.x), .y = @max(model_max.y, p.y), .z = @max(model_max.z, p.z) };
+        const positions = [_]rl.Vector3{
+            triangle.a.position,
+            triangle.b.position,
+            triangle.c.position,
+        };
+
+        for (positions) |position| {
+            model_min.x = @min(model_min.x, position.x);
+            model_min.y = @min(model_min.y, position.y);
+            model_min.z = @min(model_min.z, position.z);
+
+            model_max.x = @max(model_max.x, position.x);
+            model_max.y = @max(model_max.y, position.y);
+            model_max.z = @max(model_max.z, position.z);
         }
     }
+
+    // El punto medio entre las dos esquinas es el centro de la caja.
+    // No necesariamente coincide con el origen del archivo OBJ.
     const model_center = model_min.add(model_max).scale(0.5);
+
+    // 2. Decidir el tamaño y la posición en nuestra escena.
+    const model_scale: f32 = 20; // Multiplica por 20 el tamaño original.
+    const floor_y: f32 = -5; // Misma altura que el plano de la escena.
+    const scaled_center = model_center.scale(model_scale);
+    const scaled_bottom_y = model_min.y * model_scale;
+
+    // Después de escalar, trasladamos el modelo:
+    // - En X y Z, restamos su centro para dejarlo centrado en 0.
+    // - En Y, llevamos su punto más bajo hasta la altura del piso.
+    // Ejemplo: si la base escalada está en Y=2, moverla -7 la deja en -5.
     const model_offset = rl.Vector3{
-        .x = -model_center.x * model_scale,
-        .y = -5 - model_min.y * model_scale,
-        .z = -model_center.z * model_scale,
+        .x = -scaled_center.x,
+        .y = floor_y - scaled_bottom_y,
+        .z = -scaled_center.z,
     };
+
+    // 3. Aplicar el cambio a cada vértice: posición nueva = posición * escala + traslado.
+    // |*triangle| obtiene un puntero para modificar el triángulo guardado en la malla.
+    // No interpolamos ni creamos triángulos; cambiamos sus posiciones.
+    // Los UV se conservan. Las normales también, porque la escala es uniforme y positiva.
     for (mesh.triangles) |*triangle| {
         triangle.a.position = triangle.a.position.scale(model_scale).add(model_offset);
         triangle.b.position = triangle.b.position.scale(model_scale).add(model_offset);
         triangle.c.position = triangle.c.position.scale(model_scale).add(model_offset);
     }
-    const model_bounds_center = model_center.scale(model_scale).add(model_offset);
-    const model_bounds_radius = model_max.subtract(model_min).length() * model_scale * 0.5 + 0.001;
+
+    // 4. Crear una esfera invisible que encierre el modelo ya colocado.
+    // El raytracer la usa para descartar rayos que no pueden tocar el modelo
+    // sin tener que revisar todos sus triángulos.
+    const model_bounds_center = scaled_center.add(model_offset);
+    const box_size = model_max.subtract(model_min);
+    const scaled_box_diagonal = box_size.length() * model_scale;
+
+    // Desde el centro de la caja hasta una esquina hay media diagonal.
+    // Ese radio encierra toda la caja y, por tanto, todo el modelo.
+    const rounding_margin: f32 = 0.001;
+    const model_bounds_radius = scaled_box_diagonal * 0.5 + rounding_margin;
 
     var last_frame_time = Clock.now(io);
     // delta es la diferencia de tiempo entre el marco actual y el anterior
@@ -207,6 +256,8 @@ pub fn main() !void {
     //};
 
     const spheres = [_]Forma{
+
+        // Modelo 3D:
         .{ .Model = .{
             .mesh = mesh,
             .bounding_sphere = .{
