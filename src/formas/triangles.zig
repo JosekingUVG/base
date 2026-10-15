@@ -140,69 +140,83 @@ pub const Triangle = struct {
         origin: rl.Vector3,
         direction: rl.Vector3,
     ) ?Intersect {
+        const epsilon: f32 = 0.000001;
 
-        // 1. Encontrar el plano que contiene el triángulo.
+        const edge_1 =
+            self.b.position.subtract(self.a.position);
 
-        const ab = self.b.position.subtract(self.a.position);
-        const ac = self.c.position.subtract(self.a.position);
+        const edge_2 =
+            self.c.position.subtract(self.a.position);
 
-        const cross = ab.crossProduct(ac);
+        const p_vector =
+            direction.crossProduct(edge_2);
 
-        // Si el área es prácticamente cero, los vértices son
-        // colineales y no forman un triángulo válido.
-        if (cross.length() < 0.000001) {
+        const determinant =
+            edge_1.dotProduct(p_vector);
+
+        // Rayo paralelo o triángulo degenerado.
+        if (@abs(determinant) < epsilon) {
             return null;
         }
 
-        const plane_normal = cross.normalize();
+        const inverse_determinant = 1.0 / determinant;
 
-        // 2. Intersectar el rayo con el plano.
+        const origin_to_a =
+            origin.subtract(self.a.position);
 
-        const denominator =
-            direction.dotProduct(plane_normal);
+        // Influencia del vértice B.
+        const b_weight =
+            origin_to_a.dotProduct(p_vector) *
+            inverse_determinant;
 
-        // El rayo es paralelo al plano.
-        if (@abs(denominator) < 0.000001) {
+        if (b_weight < 0.0 or b_weight > 1.0) {
             return null;
         }
 
-        const solution =
-            self.a.position
-                .subtract(origin)
-                .dotProduct(plane_normal) /
-            denominator;
+        const q_vector =
+            origin_to_a.crossProduct(edge_1);
 
-        // La intersección está detrás del rayo.
-        if (solution <= 0.001) {
+        // Influencia del vértice C.
+        const c_weight =
+            direction.dotProduct(q_vector) *
+            inverse_determinant;
+
+        if (c_weight < 0.0 or
+            b_weight + c_weight > 1.0)
+        {
             return null;
         }
 
-        // 3. Obtener el punto de impacto.
+        const distance =
+            edge_2.dotProduct(q_vector) *
+            inverse_determinant;
 
-        // P = O + tD
+        if (distance <= 0.001) {
+            return null;
+        }
+
+        const barycentric = Barycentric{
+            .a = 1.0 - b_weight - c_weight,
+            .b = b_weight,
+            .c = c_weight,
+        };
 
         const point =
-            origin.add(direction.scale(solution));
+            origin.add(direction.scale(distance));
 
-        // 4. Comprobar si el punto está dentro del triángulo.
+        const uv =
+            self.calculateUV(barycentric);
 
-        const barycentric =
-            self.calculateUVW(point) orelse return null;
+        var normal =
+            self.calculateNormal(barycentric);
 
-        // 5. Interpolar UV y normal.
-
-        const uv = self.calculateUV(barycentric);
-
-        var normal = self.calculateNormal(barycentric);
-
-        // Hacemos que la normal apunte contra el rayo.
-        if (normal.dotProduct(direction) > 0) {
-            normal = normal.scale(-1);
+        if (normal.dotProduct(direction) > 0.0) {
+            normal = normal.scale(-1.0);
         }
 
         return .{
             .Material = self.material,
-            .Distancia = solution,
+            .Distancia = distance,
             .Normal = normal,
             .Punto = point,
             .UV = uv,

@@ -1,14 +1,15 @@
 const rl = @import("raylib");
-const triangle = @import("triangle").Triangle;
+const Triangle = @import("triangle").Triangle;
+
 pub const Model = struct {
-    triangles: []Triangle,
-    bounds: BoundingSphere,
+    //triangles: []Triangle,
+    //bounds: BoundingSphere,
 
     pub fn intersect(
         self: Model,
         origin: rl.Vector3,
         direction: rl.Vector3,
-    ) ?Intersect {
+    ) _?Intersect {
         // 1. Probar esfera envolvente.
         // 2. Si falla, retornar null.
         // 3. Probar todos los triángulos.

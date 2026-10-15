@@ -4,6 +4,7 @@ const rl = @import("raylib");
 const Sphere = @import("sphere.zig").Sphere;
 const Plane = @import("plane.zig").Plane;
 const Triangle = @import("triangles.zig").Triangle;
+const Model = @import("model.zig").Model;
 
 pub const Forma = union(enum) {
     Sphere: Sphere,
@@ -26,6 +27,10 @@ pub const Forma = union(enum) {
 
             .Triangle => |triangle| {
                 return triangle.intersect(origin, direction);
+            },
+
+            .Model => |model| {
+                return model.intersect(origin, direction);
             },
         }
     }
