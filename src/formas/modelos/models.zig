@@ -4,7 +4,7 @@ const rl = @import("raylib");
 const Sphere = @import("../sphere.zig").Sphere;
 const Mesh = @import("mesh.zig").Mesh;
 const Intersect =
-    @import("../raytracer/raytracer.zig").Intersect;
+    @import("../../raytracer/raytracer.zig").Intersect;
 
 pub const Model = struct {
     bounding_sphere: Sphere,
@@ -15,12 +15,12 @@ pub const Model = struct {
         origin: rl.Vector3,
         direction: rl.Vector3,
     ) ?Intersect {
-        // Usamos la Sphere que ya existe, pero descartamos
-        // su impacto porque la esfera es invisible.
-        _ = self.bounding_sphere.intersect(
-            origin,
-            direction,
-        ) orelse return null;
+        // Un rayo que nace dentro también puede golpear la malla
+        // (por ejemplo, los rayos de sombra y reflexión).
+        const offset = origin.subtract(self.bounding_sphere.center);
+        if (offset.dotProduct(offset) > self.bounding_sphere.radius * self.bounding_sphere.radius) {
+            _ = self.bounding_sphere.intersect(origin, direction) orelse return null;
+        }
 
         var closest_hit: ?Intersect = null;
         var closest_distance =

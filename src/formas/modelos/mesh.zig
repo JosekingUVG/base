@@ -1,9 +1,9 @@
 const std = @import("std");
 const rl = @import("raylib");
 
-const Material = @import("../raytracer/raytracer.zig").Material;
-const Triangle = @import("triangles.zig").Triangle;
-const Vertex = @import("triangles.zig").Vertex;
+const Material = @import("../../raytracer/raytracer.zig").Material;
+const Triangle = @import("../triangles.zig").Triangle;
+const Vertex = @import("../triangles.zig").Vertex;
 
 pub const Mesh = struct {
     triangles: []Triangle,
@@ -35,13 +35,15 @@ pub const Mesh = struct {
     /// El material se copia a cada triángulo generado.
     pub fn loadObj(
         allocator: std.mem.Allocator,
+        io: std.Io,
         path: []const u8,
         material: Material,
     ) !Mesh {
-        const source = try std.fs.cwd().readFileAlloc(
-            allocator,
+        const source = try std.Io.Dir.cwd().readFileAlloc(
+            io,
             path,
-            64 * 1024 * 1024,
+            allocator,
+            .limited(64 * 1024 * 1024),
         );
         defer allocator.free(source);
 

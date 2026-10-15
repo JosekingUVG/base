@@ -115,9 +115,9 @@ pub const Triangle = struct {
 
         // Interpolación de coordenadas baricéntricas.
         const barycentric = Barycentric{
-            .a = 1.0 - b_weight - c_weight,
-            .b = b_weight,
-            .c = c_weight,
+            .u = 1.0 - b_weight - c_weight,
+            .v = b_weight,
+            .w = c_weight,
         };
 
         const point =

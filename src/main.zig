@@ -9,6 +9,7 @@ const Light = @import("raytracer/raytracer.zig").Light;
 const Intersect = @import("raytracer/raytracer.zig").Intersect;
 const Material = @import("raytracer/raytracer.zig").Material;
 const Texture = @import("raytracer/textures.zig").Texture;
+const Mesh = @import("formas/modelos/mesh.zig").Mesh;
 
 const htmlColor = @import("raytracer/cute_colors.zig").htmlColor;
 const V3FromColor = @import("raytracer/raytracer.zig").V3FromColor;
@@ -70,23 +71,86 @@ pub fn main() !void {
     };
     defer floor_texture.deinit();
 
+    // Modelo extraído de https://kenney.nl/assets/cube-pets
+
+    var model_texture = try Texture.load(
+        gpa,
+        "assets/koala/colormap.png",
+    );
+    defer model_texture.deinit();
+
+    const model_material = Material{
+        .Texture = &model_texture,
+        // Conserva el color de la textura incluso fuera de la luz directa.
+        .Ambient = 0.6,
+
+        // La textura define el color; blanco no la modifica.
+        .Color = V3FromColor(htmlColor("#fff")),
+
+        .Propiedades = .{
+            .Albedo = 0.4,
+            .Especular = 0.0,
+            .Reflectividad = 0.0,
+            .Transparencia = 0.0,
+        },
+
+        // No influye mientras Propiedades.Especular sea 0.
+        .Especular = 1000,
+
+        // Tampoco influye mientras Transparencia sea 0.
+        .Refractive_index = 1.0,
+    };
+
+    var mesh = try Mesh.loadObj(
+        gpa,
+        io,
+        "assets/koala/Untitled.obj",
+        model_material,
+    );
+    defer mesh.deinit();
+
+    // Escala uniforme: conserva normales y UV y apoya el modelo en el piso.
+    const model_scale: f32 = 20;
+    var model_min = rl.Vector3{ .x = std.math.inf(f32), .y = std.math.inf(f32), .z = std.math.inf(f32) };
+    var model_max = rl.Vector3{ .x = -std.math.inf(f32), .y = -std.math.inf(f32), .z = -std.math.inf(f32) };
+    for (mesh.triangles) |triangle| {
+        for ([_]rl.Vector3{ triangle.a.position, triangle.b.position, triangle.c.position }) |p| {
+            model_min = .{ .x = @min(model_min.x, p.x), .y = @min(model_min.y, p.y), .z = @min(model_min.z, p.z) };
+            model_max = .{ .x = @max(model_max.x, p.x), .y = @max(model_max.y, p.y), .z = @max(model_max.z, p.z) };
+        }
+    }
+    const model_center = model_min.add(model_max).scale(0.5);
+    const model_offset = rl.Vector3{
+        .x = -model_center.x * model_scale,
+        .y = -5 - model_min.y * model_scale,
+        .z = -model_center.z * model_scale,
+    };
+    for (mesh.triangles) |*triangle| {
+        triangle.a.position = triangle.a.position.scale(model_scale).add(model_offset);
+        triangle.b.position = triangle.b.position.scale(model_scale).add(model_offset);
+        triangle.c.position = triangle.c.position.scale(model_scale).add(model_offset);
+    }
+    const model_bounds_center = model_center.scale(model_scale).add(model_offset);
+    const model_bounds_radius = model_max.subtract(model_min).length() * model_scale * 0.5 + 0.001;
+
     var last_frame_time = Clock.now(io);
     // delta es la diferencia de tiempo entre el marco actual y el anterior
     var delta: i64 = 1;
 
     //ESPEJO:
-    const espejo = Material{
-        .Color = V3FromColor(htmlColor("#fff")),
-        .Propiedades = .{
-            .Albedo = 0, // albedo es la capacidad de dispersión de la luz
-            .Especular = 1,
-            .Reflectividad = 0.9,
-            .Transparencia = 0,
-        },
-        .Especular = 100,
-        .Refractive_index = 0,
-    };
+    //const espejo = Material{
+    //    .Color = V3FromColor(htmlColor("#fff")),
+    //    .Propiedades = .{
+    //        .Albedo = 0, // albedo es la capacidad de dispersión de la luz
+    //        .Especular = 1,
+    //        .Reflectividad = 0.9,
+    //        .Transparencia = 0,
+    //    },
+    //    .Especular = 100,
+    //    .Refractive_index = 0,
+    // };
 
+    // Plano
     const floor_material = Material{
         .Color = V3FromColor(htmlColor("#fff")),
         .Texture = &floor_texture,
@@ -104,65 +168,73 @@ pub fn main() !void {
     };
 
     // VIDRIO:
-    const vidrio = Material{
-        .Color = V3FromColor(htmlColor("#aaa")),
-        .Propiedades = .{
-            .Albedo = 0,
-            .Especular = 0.5,
-            .Reflectividad = 0.1,
-            .Transparencia = 0.8,
-        },
-        .Especular = 125,
-        .Refractive_index = 1.5,
-    };
+    //const vidrio = Material{
+    //    .Color = V3FromColor(htmlColor("#aaa")),
+    //    .Propiedades = .{
+    //        .Albedo = 0,
+    //        .Especular = 0.5,
+    //        .Reflectividad = 0.1,
+    //       .Transparencia = 0.8,
+    //   },
+    //   .Especular = 125,
+    //   .Refractive_index = 1.5,
+    //};
 
     // DIAMANTE:
-    const diamante = Material{
-        .Color = V3FromColor(htmlColor("#aaa")),
-        .Propiedades = .{
-            .Albedo = 0,
-            .Especular = 0.5,
-            .Reflectividad = 0.1,
-            .Transparencia = 0.8,
-        },
-        .Especular = 125,
-        .Refractive_index = 2.417,
-    };
+    //const diamante = Material{
+    //   .Color = V3FromColor(htmlColor("#aaa")),
+    //   .Propiedades = .{
+    //       .Albedo = 0,
+    //       .Especular = 0.5,
+    //       .Reflectividad = 0.1,
+    //       .Transparencia = 0.8,
+    //   },
+    //   .Refractive_index = 2.417,
+    //   .Especular = 125,
+    //};
 
     // MARMOL:
-    const marmol = Material{
-        .Color = V3FromColor(htmlColor("#66664c")),
-        .Propiedades = .{
-            .Albedo = 0.4,
-            .Especular = 0.3,
-            .Reflectividad = 0,
-            .Transparencia = 0,
-        },
-        .Especular = 10,
-        .Refractive_index = 0,
-    };
+    //const marmol = Material{
+    //    .Color = V3FromColor(htmlColor("#66664c")),
+    //    .Propiedades = .{
+    //        .Albedo = 0.4,
+    //        .Especular = 0.3,
+    //        .Reflectividad = 0,
+    //        .Transparencia = 0,
+    //    },
+    //    .Especular = 10,
+    //    .Refractive_index = 0,
+    //};
 
     const spheres = [_]Forma{
-        .{ .Sphere = .{
-            .center = .{ .x = 10, .y = 0, .z = -40 },
-            .radius = 5,
-            .material = espejo,
-        } },
-        .{ .Sphere = .{
-            .center = .{ .x = 12.5, .y = 0, .z = -60 },
-            .radius = 5,
-            .material = .{
-                .Color = V3FromColor(htmlColor("#fff")),
-                .Propiedades = .{
-                    .Albedo = 0.9,
-                    .Especular = 0.1,
-                    .Reflectividad = 0,
-                    .Transparencia = 0,
-                },
-                .Especular = 10,
-                .Refractive_index = 0,
+        .{ .Model = .{
+            .mesh = mesh,
+            .bounding_sphere = .{
+                .center = model_bounds_center,
+                .radius = model_bounds_radius,
+                .material = model_material,
             },
         } },
+        //.{ .Sphere = .{
+        //    .center = .{ .x = 10, .y = 0, .z = -40 },
+        //    .radius = 5,
+        //    .material = espejo,
+        //} },
+        //.{ .Sphere = .{
+        //    .center = .{ .x = 12.5, .y = 0, .z = -60 },
+        //    .radius = 5,
+        //    .material = .{
+        //        .Color = V3FromColor(htmlColor("#fff")),
+        //        .Propiedades = .{
+        //            .Albedo = 0.9,
+        //            .Especular = 0.1,
+        //            .Reflectividad = 0,
+        //            .Transparencia = 0,
+        //        },
+        //        .Especular = 10,
+        //        .Refractive_index = 0,
+        //    },
+        //} },
 
         // Plano:
 
@@ -177,28 +249,28 @@ pub fn main() !void {
             .v_size = 10,
 
             .material = floor_material,
-        } },
+        } }, //,
 
-        .{ .Sphere = .{
-            .center = .{ .x = 0, .y = 0, .z = 0 },
-            .radius = 5,
-            .material = marmol,
-        } },
-        .{ .Sphere = .{
-            .center = .{ .x = 22, .y = 0, .z = -45 },
-            .radius = 5,
-            .material = espejo,
-        } },
-        .{ .Sphere = .{
-            .center = .{ .x = -25, .y = 0, .z = -40 },
-            .radius = 5,
-            .material = vidrio,
-        } },
-        .{ .Sphere = .{
-            .center = .{ .x = -37, .y = 0, .z = -40 },
-            .radius = 5,
-            .material = diamante,
-        } },
+        //.{ .Sphere = .{
+        //    .center = .{ .x = 0, .y = 0, .z = 0 },
+        //    .radius = 5,
+        //    .material = marmol,
+        //} },
+        //.{ .Sphere = .{
+        //    .center = .{ .x = 22, .y = 0, .z = -45 },
+        //    .radius = 5,
+        //    .material = espejo,
+        //} },
+        //.{ .Sphere = .{
+        //    .center = .{ .x = -25, .y = 0, .z = -40 },
+        //    .radius = 5,
+        //    .material = vidrio,
+        //} },
+        //.{ .Sphere = .{
+        //    .center = .{ .x = -37, .y = 0, .z = -40 },
+        //    .radius = 5,
+        //    .material = diamante,
+        //} },
     };
 
     // Luces de la escena
@@ -434,7 +506,7 @@ fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, l
         const surface_color = mat.surfaceColor(hit.UV);
 
         // Aquí acumularemos luz, reflejos y refracción.
-        var color: rl.Vector3 = .zero();
+        var color = surface_color.scale(mat.Ambient);
 
         // Dirección desde el punto hacia la cámara.
         const view_direction = direction.scale(-1);

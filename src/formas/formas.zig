@@ -4,7 +4,7 @@ const rl = @import("raylib");
 const Sphere = @import("sphere.zig").Sphere;
 const Plane = @import("plane.zig").Plane;
 const Triangle = @import("triangles.zig").Triangle;
-const Model = @import("model.zig").Model;
+const Model = @import("modelos/models.zig").Model;
 
 pub const Forma = union(enum) {
     Sphere: Sphere,

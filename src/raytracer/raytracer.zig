@@ -27,6 +27,8 @@ pub const Material = struct {
     Especular: f32,
     Refractive_index: f32,
     Texture: ?*const Texture = null,
+    // Luz ambiental neutra aproximada; 0 conserva la iluminacion directa.
+    Ambient: f32 = 0,
     // proporciones, de 0 a 1, de cuanto refleja y cuanto deja pasar la luz
     Propiedades: struct {
         Albedo: f32,
