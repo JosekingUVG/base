@@ -1,3 +1,5 @@
+// Referencias: https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle//moller-trumbore-ray-triangle-intersection.html
+
 const rl = @import("raylib");
 
 const Intersect = @import("../raytracer/raytracer.zig").Intersect;
@@ -21,91 +23,6 @@ pub const Triangle = struct {
     c: Vertex,
 
     material: Material,
-
-    /// Devuelve el doble del área del triángulo.
-    ///
-    /// No dividimos entre 2 porque las áreas solamente se utilizarán
-    /// como proporciones, así que ese factor se cancelaría.
-    fn doubleArea(
-        p0: rl.Vector3,
-        p1: rl.Vector3,
-        p2: rl.Vector3,
-    ) f32 {
-        const edge_1 = p1.subtract(p0);
-        const edge_2 = p2.subtract(p0);
-
-        // Porque, evidentemente, la forma más intuitiva de calcular
-        // un área era producir un vector que apunta fuera del triángulo.
-        const cross = edge_1.crossProduct(edge_2);
-
-        return cross.length();
-    }
-
-    /// Calcula las coordenadas baricéntricas del punto.
-    ///
-    /// Devuelve null si el punto está fuera del triángulo.
-    pub fn calculateUVW(
-        self: Triangle,
-        point: rl.Vector3,
-    ) ?Barycentric {
-        const total_area = doubleArea(
-            self.a.position,
-            self.b.position,
-            self.c.position,
-        );
-
-        // Los tres puntos no forman un triángulo válido.
-        if (total_area < 0.000001) {
-            return null;
-        }
-
-        // Influencia del vértice A:
-        // área del triángulo PBC / área de ABC.
-        const u = doubleArea(
-            point,
-            self.b.position,
-            self.c.position,
-        ) / total_area;
-
-        // Influencia del vértice B:
-        // área del triángulo APC / área de ABC.
-        const v = doubleArea(
-            self.a.position,
-            point,
-            self.c.position,
-        ) / total_area;
-
-        // Influencia del vértice C:
-        // área del triángulo ABP / área de ABC.
-        const w = doubleArea(
-            self.a.position,
-            self.b.position,
-            point,
-        ) / total_area;
-
-        const sum = u + v + w;
-        const epsilon: f32 = 0.0001;
-
-        // Para un punto interior debe cumplirse:
-        //
-        // u >= 0
-        // v >= 0
-        // w >= 0
-        // u + v + w ≈ 1
-        if (u < -epsilon or
-            v < -epsilon or
-            w < -epsilon or
-            @abs(sum - 1.0) > epsilon)
-        {
-            return null;
-        }
-
-        return .{
-            .u = u,
-            .v = v,
-            .w = w,
-        };
-    }
 
     /// Interpola los UV de los tres vértices.
     fn calculateUV(
@@ -135,6 +52,7 @@ pub const Triangle = struct {
             .normalize();
     }
 
+    // Implementación del algoritmo de Möller-Trumbore para la intersección rayo-triángulo.
     pub fn intersect(
         self: Triangle,
         origin: rl.Vector3,
@@ -195,6 +113,7 @@ pub const Triangle = struct {
             return null;
         }
 
+        // Interpolación de coordenadas baricéntricas.
         const barycentric = Barycentric{
             .a = 1.0 - b_weight - c_weight,
             .b = b_weight,

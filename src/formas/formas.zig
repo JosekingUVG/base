@@ -10,6 +10,7 @@ pub const Forma = union(enum) {
     Sphere: Sphere,
     Plane: Plane,
     Triangle: Triangle,
+    Model: Model,
 
     pub fn intersect(
         self: Forma,
