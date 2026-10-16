@@ -6,4 +6,4 @@
 
 ## Criterios:
 
-![Criterios](../assets/imgs/Criterio.png)
+![Criterios](assets/imgs/Criterio.png)
