@@ -18,8 +18,8 @@ const controls = @import("config/controls.zig");
 
 const Clock = std.Io.Clock.real;
 
-const width = 1300;
-const height = 900;
+const width = 900;
+const height = 600;
 
 const near_distance: f32 = 70;
 
@@ -46,25 +46,30 @@ pub fn main() !void {
         .ReleaseFast, .ReleaseSmall => {},
     };
 
-    // threaded es un wrapper para manejar la entrada/salida de manera concurrente y segura
+    // === CONCURRENCIA: GESTOR DE HILOS (THREAD POOL) ===
+    // 'threaded' inicializa y administra el pool de hilos reutilizables del sistema.
+    // Esto evita el costo de crear y destruir hilos de sistema operativo en cada fotograma.
     var threaded: std.Io.Threaded = .init(gpa, .{});
     defer threaded.deinit();
     const io = threaded.io();
-    // Worker_count es el número de hilos que vamos a usar para renderizar la escena, basado en el número de núcleos de la CPU
-    // 1 es el mínimo para evitar que se intente crear 0 hilos en sistemas con 1 núcleo
-    //std.Thread.getCpuCount() devuelve el número de núcleos de la CPU, y si falla, usamos 1 como valor por defecto
+
+    // === CONCURRENCIA: CANTIDAD DE HILOS SEGÚN HARDWARE ===
+    // Preguntamos al sistema operativo cuántos núcleos/hilos lógicos tiene el procesador (CPU).
+    // Con @max(1, ...) garantizamos que al menos tengamos 1 hilo de ejecución.
     const worker_count = @max(1, std.Thread.getCpuCount() catch 1);
 
     // Inicializamos el framebuffer con el tamaño de la ventana y los colores de fondo y borde
     // .black, ... .white significa que el color de fondo es negro y el color de borde es blanco
     var framebuffer = Framebuffer.init(width, height, .black, .white);
 
+    // Ventana Raylib
     rl.initWindow(width, height, "Raytracer!!!");
     rl.setTraceLogLevel(.warning);
     defer rl.closeWindow();
     defer framebuffer.deinit();
     rl.setTargetFPS(60);
 
+    // Textura del plano
     var floor_texture = Texture.load(
         gpa,
         formas.floor_texture_path,
@@ -77,14 +82,24 @@ pub fn main() !void {
     };
     defer floor_texture.deinit();
 
+    // Textura del modelo
     var model_texture = try Texture.load(
         gpa,
         formas.model_texture_path,
     );
     defer model_texture.deinit();
 
+    // Textura del cubo
+    var cube_texture = try Texture.load(
+        gpa,
+        formas.cube_texture_path,
+    );
+    defer cube_texture.deinit();
+
+    // Modelo
     const model_material = formas.modelMaterial(&model_texture);
 
+    // Cargar el modelo OBJ
     var mesh = try Mesh.loadObj(
         gpa,
         io,
@@ -93,12 +108,15 @@ pub fn main() !void {
     );
     defer mesh.deinit();
 
-    var last_frame_time = Clock.now(io);
+    // Necesitamos saber el tiempo que tarda cada fotograma para calcular el delta time (dt) y mover la cámara de forma suave.
+    var last_frame_time = Clock.now(io); // usamos clock para medir el tiempo entre fotogramas y calcular delta
     // delta es la diferencia de tiempo entre el marco actual y el anterior
     var delta: i64 = 1;
 
-    const objects = formas.create(mesh, model_material, &floor_texture);
+    // Creamos los objetos de la escena a partir del modelo y la textura del piso
+    const objects = formas.create(mesh, model_material, &floor_texture, &cube_texture);
 
+    // Inicializamos la cámara con la distancia inicial y los ángulos de rotación iniciales
     var cameraDistance = controls.initial_distance;
     var camera: Camera = .init(.{
         .x = 0,
@@ -106,18 +124,23 @@ pub fn main() !void {
         .z = cameraDistance,
     }, .zero());
 
+    // controles de la cámara: ángulos de rotación y distancia
     var camera_x_angle = controls.initial_x_angle;
     var camera_y_angle = controls.initial_y_angle;
 
-    var has_rendered = false;
-    var was_moving = false;
+    // Render loop: mientras la ventana no se cierre, actualizamos la cámara y renderizamos la escena
+    var has_rendered = false; // variable para saber si ya se ha renderizado al menos un fotograma
+    var was_moving = false; // variable para saber si la cámara se estaba moviendo en el fotograma anterior
 
+    // ciclo principal del programa: mientras la ventana no se cierre, actualizamos la cámara y renderizamos la escena
     while (!rl.windowShouldClose()) {
-        defer {
+        defer { // defer para medir el tiempo que tarda cada fotograma y calcular el delta time (dt)
             const now = Clock.now(io);
             delta = last_frame_time.durationTo(now).toMicroseconds();
             last_frame_time = now;
         }
+
+        // COnstantes que controlan la velocidad de movimiento de la cámara y el zoom, y los límites de ángulo y distancia
         const dt: f32 = @as(f32, @floatFromInt(delta)) / 1_000_000;
         const old_x_angle = camera_x_angle;
         const old_y_angle = camera_y_angle;
@@ -139,8 +162,10 @@ pub fn main() !void {
             camera_y_angle = @max(controls.y_angle_min, @min(controls.y_angle_max, camera_y_angle));
         }
 
+        // zoom con la rueda del mouse, con límites de distancia mínima y máxima
         const wheel = rl.getMouseWheelMove();
         cameraDistance = std.math.clamp(cameraDistance - wheel * controls.zoom_speed, controls.min_distance, controls.max_distance);
+        // Detectamos si la cámara se está moviendo comparando los ángulos y la distancia actuales con los anteriores
         const moving = camera_x_angle != old_x_angle or
             camera_y_angle != old_y_angle or cameraDistance != old_distance;
 
@@ -155,21 +180,26 @@ pub fn main() !void {
         // Durante el movimiento usamos bloques grandes. Al detenerse, refinamos
         // una vez y reutilizamos esa imagen mientras la escena no cambie.
         const needs_render = !has_rendered or moving or was_moving;
-        if (needs_render) {
+        if (needs_render) { // si la cámara se está moviendo o es el primer fotograma, renderizamos la escena
+            // Elegimos el tamaño del bloque de píxeles según si la cámara se está moviendo o no, y según la distancia de la cámara al origen
             const pixel_block: usize = if (moving) 4 else if (cameraDistance > near_distance) 2 else 1;
+            // Renderizamos la escena usando ray tracing, con concurrencia y reparto dinámico de trabajo entre los hilos
             try render(io, worker_count, &framebuffer, &objects, &luces.lights, camera, pixel_block);
             has_rendered = true;
         }
-        was_moving = moving;
+        was_moving = moving; // actualizamos la variable was_moving para el siguiente fotograma
 
         // Dibujamos el framebuffer en la ventana de Raylib
         try framebuffer.swap_buffers(needs_render);
     }
 }
 
-// El pool de std.Io.Threaded vive durante toda la aplicación y reutiliza hilos.
-// Cada trabajador reclama una franja completa; solo el contador es compartido
-// con escritura. La escena y la cámara no cambian hasta terminar el grupo.
+// === CONCURRENCIA: ESTRUCTURA DE TRABAJO COMPARTIDO (RenderJob) ===
+// Contiene todos los datos necesarios para renderizar un fotograma completo.
+// Es compartida por todos los hilos trabajadores de forma segura:
+// - Los datos de escena (cámara, objetos, luces) son de SOLO LECTURA (sin riesgo de carrera).
+// - El buffer de píxeles se escribe en regiones disjuntas (cada hilo pinta su propia franja).
+// - La única variable que se modifica concurrentemente es 'next_y' (de forma atómica).
 const RenderJob = struct {
     pixels: []rl.Color,
     image_width: usize,
@@ -181,6 +211,10 @@ const RenderJob = struct {
     stripe_height: usize,
     aspect_ratio: f32,
     perspective_scale: f32,
+
+    // 'next_y' actúa como la "pizarra de turnos". Es un valor ATÓMICO.
+    // Permite que múltiples hilos reclamen la siguiente franja de filas
+    // al mismo tiempo sin colisiones y sin usar bloqueos pesados (mutexes).
     next_y: std.atomic.Value(usize) = .init(0),
 
     fn init(target: *Framebuffer, objects: []const Forma, lights: []const Light, camera: Camera, pixel_block: usize) RenderJob {
@@ -193,21 +227,32 @@ const RenderJob = struct {
             .lights = lights,
             .camera = camera,
             .pixel_block = pixel_block,
-            // Aproximadamente 16 filas, siempre alineadas con los bloques.
+            // Cada franja tiene aproximadamente 16 filas de altura.
             .stripe_height = @max(1, 16 / pixel_block) * pixel_block,
             .aspect_ratio = @as(f32, @floatFromInt(target.width)) / @as(f32, @floatFromInt(target.height)),
             .perspective_scale = @tan(std.math.pi / 6.0),
         };
     }
 
+    // Función que ejecuta cada hilo trabajador (Work-Stealing / Reparto Dinámico):
     fn work(job: *RenderJob) void {
         while (true) {
+            // fetchAdd lee el valor actual de next_y y de inmediato le suma stripe_height (16).
+            // Si el hilo A entra cuando vale 0, recibe 0 y next_y pasa a 16.
+            // Si el hilo B entra de inmediato, recibe 16 y next_y pasa a 32.
             const first_y = job.next_y.fetchAdd(job.stripe_height, .monotonic);
+
+            // Si el índice supera la altura de la imagen, ya no hay más franjas pendientes.
             if (first_y >= job.image_height) return;
+
+            // El hilo se encarga exclusivamente de renderizar las filas de su franja asignada.
             job.renderStripe(first_y, @min(first_y + job.stripe_height, job.image_height));
         }
     }
 
+    // Renderiza una franja horizontal [first_y, end_y).
+    // Como cada hilo procesa un rango de 'y' diferente, no hay colisiones de memoria
+    // al escribir en 'job.pixels'.
     fn renderStripe(job: *const RenderJob, first_y: usize, end_y: usize) void {
         const width_f32: f32 = @floatFromInt(job.image_width);
         const height_f32: f32 = @floatFromInt(job.image_height);
@@ -237,18 +282,30 @@ const RenderJob = struct {
     }
 };
 
+// === CONCURRENCIA: COORDINADOR DEL FOTOGRAMA (fn render) ===
+// Despacha el trabajo a los hilos y espera a que todos terminen antes de continuar.
 fn render(io: std.Io, worker_count: usize, target: *Framebuffer, objects: []const Forma, lights: []const Light, camera: Camera, pixel_block: usize) !void {
     var job = RenderJob.init(target, objects, lights, camera, pixel_block);
     const stripe_count = std.math.divCeil(usize, job.image_height, job.stripe_height) catch unreachable;
     const workers = @max(1, @min(worker_count, stripe_count));
+
+    // 'std.Io.Group' agrupa tareas concurrentes para esperar su finalización conjunta.
     var group: std.Io.Group = .init;
     defer group.cancel(io);
+
+    // Despachamos los trabajadores secundarios al pool de hilos:
     for (1..workers) |_| {
-        // Si no hay recursos para otro hilo, los existentes y main terminan
-        // las franjas pendientes sin descartar el fotograma.
+        // group.concurrent delega RenderJob.work a un hilo en segundo plano.
         group.concurrent(io, RenderJob.work, .{&job}) catch break;
     }
+
+    // El hilo principal NO se queda ocioso esperando; también ejecuta RenderJob.work
+    // para contribuir procesando franjas pendientes.
     job.work();
+
+    // BARRERA DE SINCRONIZACIÓN:
+    // Espera obligatoria hasta que todos los hilos secundarios terminen su trabajo.
+    // Solo después de esta línea está garantizado que el fotograma está 100% completo.
     try group.await(io);
 }
 

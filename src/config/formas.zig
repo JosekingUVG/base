@@ -9,6 +9,7 @@ pub const floor_texture_path = "assets/plane/textures/hinoki_planks_disp_4k.png"
 pub const model_texture_path = "assets/koala/colormap.png";
 // Modelo extraído de https://kenney.nl/assets/cube-pets
 pub const model_path = "assets/koala/Untitled.obj";
+pub const cube_texture_path = "assets/cubo/images.png";
 
 pub fn modelMaterial(model_texture: *const Texture) Material {
     return Material{
@@ -35,7 +36,7 @@ pub fn modelMaterial(model_texture: *const Texture) Material {
 }
 
 // Los recursos prestados deben vivir mientras se renderiza la escena.
-pub fn create(mesh: Mesh, model_material: Material, floor_texture: *const Texture) [2]Forma {
+pub fn create(_: Mesh, _: Material, floor_texture: *const Texture, cube_texture: *const Texture) [3]Forma {
     //ESPEJO:
     //const espejo = Material{
     //    .Color = V3FromColor(htmlColor("#fff")),
@@ -67,17 +68,31 @@ pub fn create(mesh: Mesh, model_material: Material, floor_texture: *const Textur
     };
 
     // VIDRIO:
-    //const vidrio = Material{
-    //    .Color = V3FromColor(htmlColor("#aaa")),
-    //    .Propiedades = .{
-    //        .Albedo = 0,
-    //        .Especular = 0.5,
-    //        .Reflectividad = 0.1,
-    //       .Transparencia = 0.8,
-    //   },
-    //   .Especular = 125,
-    //   .Refractive_index = 1.5,
-    //};
+    const vidrio = Material{
+        .Color = V3FromColor(htmlColor("#aaa")),
+        .Propiedades = .{
+            .Albedo = 0,
+            .Especular = 0.5,
+            .Reflectividad = 0.1,
+            .Transparencia = 0.8,
+        },
+        .Especular = 125,
+        .Refractive_index = 1.5,
+    };
+
+    //CUBO:
+    const cubo = Material{
+        .Color = V3FromColor(htmlColor("#aaa")),
+        .Texture = cube_texture,
+        .Propiedades = .{
+            .Albedo = 0.4,
+            .Especular = 0.5,
+            .Reflectividad = 0.1,
+            .Transparencia = 0.8,
+        },
+        .Especular = 125,
+        .Refractive_index = 1.5,
+    };
 
     // DIAMANTE:
     //const diamante = Material{
@@ -107,25 +122,36 @@ pub fn create(mesh: Mesh, model_material: Material, floor_texture: *const Textur
 
     return .{
 
-        // Modelo 3D:
+        //// Modelo 3D:
+        //.{
+        //    .Model = .{
+        //        .mesh = mesh,
+        //        .position = .{ .x = 0, .y = -5, .z = 0 }, // El origen del koala está en su base.
+        //        .scale = 20,
+        //        .bounding_sphere = .{
+        //            // Esfera invisible en coordenadas de la escena: encierra al koala.
+        //            .center = .{ .x = 0, .y = 10, .z = 0 },
+        //            .radius = 30,
+        //            .material = model_material,
+        //        },
+        //    },
+        //},
+
+        //Cubo:
         .{
-            .Model = .{
-                .mesh = mesh,
-                .position = .{ .x = 0, .y = -5, .z = 0 }, // El origen del koala está en su base.
-                .scale = 20,
-                .bounding_sphere = .{
-                    // Esfera invisible en coordenadas de la escena: encierra al koala.
-                    .center = .{ .x = 0, .y = 10, .z = 0 },
-                    .radius = 30,
-                    .material = model_material,
-                },
+            .Cube = .{
+                .center = .{ .x = 0, .y = 0, .z = -40 },
+                .size = 10,
+                .material = cubo,
             },
         },
+
         //.{ .Sphere = .{
         //    .center = .{ .x = 10, .y = 0, .z = -40 },
         //    .radius = 5,
         //    .material = espejo,
         //} },
+
         //.{ .Sphere = .{
         //    .center = .{ .x = 12.5, .y = 0, .z = -60 },
         //    .radius = 5,
@@ -167,11 +193,11 @@ pub fn create(mesh: Mesh, model_material: Material, floor_texture: *const Textur
         //    .radius = 5,
         //    .material = espejo,
         //} },
-        //.{ .Sphere = .{
-        //    .center = .{ .x = -25, .y = 0, .z = -40 },
-        //    .radius = 5,
-        //    .material = vidrio,
-        //} },
+        .{ .Sphere = .{
+            .center = .{ .x = -25, .y = 0, .z = -40 },
+            .radius = 5,
+            .material = vidrio,
+        } },
         //.{ .Sphere = .{
         //    .center = .{ .x = -37, .y = 0, .z = -40 },
         //    .radius = 5,

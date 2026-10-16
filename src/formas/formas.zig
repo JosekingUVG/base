@@ -5,11 +5,13 @@ const Sphere = @import("sphere.zig").Sphere;
 const Plane = @import("plane.zig").Plane;
 const Triangle = @import("triangles.zig").Triangle;
 const Model = @import("modelos/models.zig").Model;
+const Cube = @import("cubo.zig").Cube;
 
 pub const Forma = union(enum) {
     Sphere: Sphere,
     Plane: Plane,
     Triangle: Triangle,
+    Cube: Cube,
     Model: Model,
 
     pub fn intersect(
@@ -32,6 +34,10 @@ pub const Forma = union(enum) {
 
             .Model => |model| {
                 return model.intersect(origin, direction);
+            },
+
+            .Cube => |cube| {
+                return cube.intersect(origin, direction);
             },
         }
     }

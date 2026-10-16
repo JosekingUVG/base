@@ -25,6 +25,7 @@ pub const Light = struct {
     Intensity: f32,
 };
 
+// Material que representa las propiedades ópticas de una superfficie, en este caso, el entorno de la escena. Se utiliza para calcular la iluminación difusa y especular de los objetos en la escena.
 pub const Material = struct {
     //xyz como rgb, pero reducimos conversiones primero haciendo mate en f32 y luego convertimos de regreso a u8
     Color: rl.Vector3,
@@ -32,7 +33,7 @@ pub const Material = struct {
     Refractive_index: f32,
     Texture: ?*const Texture = null,
     // Luz ambiental neutra aproximada; 0 conserva la iluminacion directa.
-    Ambient: f32 = 0,
+    Ambient: f32 = 0.0,
     // proporciones, de 0 a 1, de cuanto refleja y cuanto deja pasar la luz
     Propiedades: struct {
         Albedo: f32,
@@ -126,6 +127,7 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
         // Dirección desde el punto hacia la cámara.
         const view_direction = direction.scale(-1);
 
+        // Si el material tiene reflectividad, calculamos el color reflejado y lo añadimos al color final.
         if (mat.Propiedades.Reflectividad > 0) {
             if (max_recursion > 0) {
                 const reflect_direction =
@@ -136,14 +138,17 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
                 const new_origin =
                     hit.Punto.add(hit.Normal.scale(0.001));
 
+                // Llamamos recursivamente a cast_ray para calcular el color reflejado.
+
                 const reflect_color = cast_ray(
                     new_origin,
                     reflect_direction,
                     objects,
                     lights,
-                    max_recursion - 1,
+                    max_recursion - 1, // recursión decreciente para evitar bucles infinitos
                 );
 
+                // añadimos el color reflejado al color final, escalado por la reflectividad del material
                 color = color.add(
                     reflect_color.scale(
                         mat.Propiedades.Reflectividad,
@@ -152,8 +157,10 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
             }
         }
 
+        // Si el material tiene transparencia, calculamos el color refractado y lo añadimos al color final.
         if (mat.Propiedades.Transparencia > 0) {
             if (max_recursion > 0) {
+                // si la refracción es posible, calculamos el color refractado y lo añadimos al color final
                 if (refract(
                     direction,
                     hit.Normal,
@@ -164,6 +171,7 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
                     const new_origin =
                         hit.Punto.subtract(hit.Normal.scale(0.001));
 
+                    // Llamamos recursivamente a cast_ray para calcular el color refractado.
                     const refract_color = cast_ray(
                         new_origin,
                         refract_direction,
@@ -172,6 +180,7 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
                         max_recursion - 1,
                     );
 
+                    // añadimos el color refractado al color final, escalado por la transparencia del material
                     color = color.add(
                         refract_color.scale(
                             mat.Propiedades.Transparencia,
@@ -181,6 +190,7 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
             }
         }
 
+        // Calculamos la iluminación difusa y especular de cada luz en la escena.
         for (lights) |light| {
             if (obscured(
                 hit.Punto,
@@ -200,6 +210,7 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
                     0,
                 ) * light.Intensity;
 
+            // Calculamos el color de la superficie iluminada por la luz, multiplicando el color de la superficie por el color de la luz.
             const illuminated_surface = rl.Vector3{
                 .x = surface_color.x * light.Color.x,
                 .y = surface_color.y * light.Color.y,
@@ -221,6 +232,8 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
             const specular_intensity =
                 std.math.pow(
                     f32,
+                    // Calculamos el coseno del ángulo entre la dirección de la vista y la dirección de reflexión de la luz.
+                    // Si el ángulo es pequeño, el coseno es cercano a 1 y la intensidad especular es alta. Si el ángulo es grande, el coseno es cercano a 0 y la intensidad especular es baja.
                     @max(
                         view_direction.dotProduct(reflection_dir),
                         0,
@@ -228,6 +241,7 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
                     mat.Especular,
                 ) * light.Intensity;
 
+            // cAlculamos el color especular de la luz, multiplicando el color de la luz por la intensidad especular y por el color del material.
             const specular =
                 light.Color.scale(specular_intensity);
 
@@ -243,5 +257,5 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
         return color;
     }
 
-    return V3FromColor(htmlColor("#87ceeb"));
+    return V3FromColor(htmlColor("#87ceeb")); // color de fondo: azul cielo
 }
