@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 
 const rl = @import("raylib");
 const Framebuffer = @import("dominio/framebuffer.zig").Framebuffer;
@@ -18,7 +17,7 @@ const controls = @import("config/controls.zig");
 
 const Clock = std.Io.Clock.real;
 
-const width = 900;
+const width = 1300;
 const height = 600;
 
 const near_distance: f32 = 70;
@@ -28,23 +27,9 @@ pub fn main() !void {
     // Implementación de la concurrencia, inspirado en https://akhil.sh/tutorials/zig/zig/concurrency_in_zig/
     // Respaldado con chatgpt: https://chatgpt.com/share/e/6ad05fa5-fa94-83e8-b9f4-06f5b300f1f2
 
-    // Variable para manejar la memoria de manera diferente dependiendo del modo de compilación
-    var alloc = switch (builtin.mode) {
-        // En modo debug, usamos un allocator que nos permite detectar fugas de memoria y errores de uso
-        .Debug, .ReleaseSafe => std.heap.DebugAllocator(.{}).init,
-        // En modo release, usamos un allocator más rápido y eficiente
-        .ReleaseFast, .ReleaseSmall => std.heap.smp_allocator,
-    };
-    // gpa es un alias para el allocator que vamos a usar en el resto del programa
-    const gpa: std.mem.Allocator = switch (builtin.mode) {
-        .Debug, .ReleaseSafe => alloc.allocator(),
-        .ReleaseFast, .ReleaseSmall => std.heap.smp_allocator,
-    };
-    // Defer para limpiar el allocator al final de la función main
-    defer switch (builtin.mode) {
-        .Debug, .ReleaseSafe => _ = alloc.deinit(),
-        .ReleaseFast, .ReleaseSmall => {},
-    };
+    // Allocator compartido para todos los modos de compilación; no requiere deinit.
+    // Cada recurso libera su propia memoria con su correspondiente defer.
+    const gpa: std.mem.Allocator = std.heap.smp_allocator;
 
     // === CONCURRENCIA: GESTOR DE HILOS (THREAD POOL) ===
     // 'threaded' inicializa y administra el pool de hilos reutilizables del sistema.
@@ -183,7 +168,7 @@ pub fn main() !void {
         if (needs_render) { // si la cámara se está moviendo o es el primer fotograma, renderizamos la escena
             // Elegimos el tamaño del bloque de píxeles según si la cámara se está moviendo o no, y según la distancia de la cámara al origen
             const pixel_block: usize = if (moving) 4 else if (cameraDistance > near_distance) 2 else 1;
-            // Renderizamos la escena usando ray tracing, con concurrencia y reparto dinámico de trabajo entre los hilos
+            // Renderizamos la escena usando ray tracing, con una franja horizontal fija por tarea
             try render(io, worker_count, &framebuffer, &objects, &luces.lights, camera, pixel_block);
             has_rendered = true;
         }
@@ -194,12 +179,7 @@ pub fn main() !void {
     }
 }
 
-// === CONCURRENCIA: ESTRUCTURA DE TRABAJO COMPARTIDO (RenderJob) ===
-// Contiene todos los datos necesarios para renderizar un fotograma completo.
-// Es compartida por todos los hilos trabajadores de forma segura:
-// - Los datos de escena (cámara, objetos, luces) son de SOLO LECTURA (sin riesgo de carrera).
-// - El buffer de píxeles se escribe en regiones disjuntas (cada hilo pinta su propia franja).
-// - La única variable que se modifica concurrentemente es 'next_y' (de forma atómica).
+// Datos del fotograma: la escena se lee y cada tarea escribe filas diferentes.
 const RenderJob = struct {
     pixels: []rl.Color,
     image_width: usize,
@@ -208,47 +188,8 @@ const RenderJob = struct {
     lights: []const Light,
     camera: Camera,
     pixel_block: usize,
-    stripe_height: usize,
     aspect_ratio: f32,
     perspective_scale: f32,
-
-    // 'next_y' actúa como la "pizarra de turnos". Es un valor ATÓMICO.
-    // Permite que múltiples hilos reclamen la siguiente franja de filas
-    // al mismo tiempo sin colisiones y sin usar bloqueos pesados (mutexes).
-    next_y: std.atomic.Value(usize) = .init(0),
-
-    fn init(target: *Framebuffer, objects: []const Forma, lights: []const Light, camera: Camera, pixel_block: usize) RenderJob {
-        std.debug.assert(pixel_block > 0);
-        return .{
-            .pixels = target.pixels(),
-            .image_width = @intCast(target.width),
-            .image_height = @intCast(target.height),
-            .objects = objects,
-            .lights = lights,
-            .camera = camera,
-            .pixel_block = pixel_block,
-            // Cada franja tiene aproximadamente 16 filas de altura.
-            .stripe_height = @max(1, 16 / pixel_block) * pixel_block,
-            .aspect_ratio = @as(f32, @floatFromInt(target.width)) / @as(f32, @floatFromInt(target.height)),
-            .perspective_scale = @tan(std.math.pi / 6.0),
-        };
-    }
-
-    // Función que ejecuta cada hilo trabajador (Work-Stealing / Reparto Dinámico):
-    fn work(job: *RenderJob) void {
-        while (true) {
-            // fetchAdd lee el valor actual de next_y y de inmediato le suma stripe_height (16).
-            // Si el hilo A entra cuando vale 0, recibe 0 y next_y pasa a 16.
-            // Si el hilo B entra de inmediato, recibe 16 y next_y pasa a 32.
-            const first_y = job.next_y.fetchAdd(job.stripe_height, .monotonic);
-
-            // Si el índice supera la altura de la imagen, ya no hay más franjas pendientes.
-            if (first_y >= job.image_height) return;
-
-            // El hilo se encarga exclusivamente de renderizar las filas de su franja asignada.
-            job.renderStripe(first_y, @min(first_y + job.stripe_height, job.image_height));
-        }
-    }
 
     // Renderiza una franja horizontal [first_y, end_y).
     // Como cada hilo procesa un rango de 'y' diferente, no hay colisiones de memoria
@@ -285,27 +226,41 @@ const RenderJob = struct {
 // === CONCURRENCIA: COORDINADOR DEL FOTOGRAMA (fn render) ===
 // Despacha el trabajo a los hilos y espera a que todos terminen antes de continuar.
 fn render(io: std.Io, worker_count: usize, target: *Framebuffer, objects: []const Forma, lights: []const Light, camera: Camera, pixel_block: usize) !void {
-    var job = RenderJob.init(target, objects, lights, camera, pixel_block);
-    const stripe_count = std.math.divCeil(usize, job.image_height, job.stripe_height) catch unreachable;
-    const workers = @max(1, @min(worker_count, stripe_count));
+    std.debug.assert(pixel_block > 0);
+    const job: RenderJob = .{
+        .pixels = target.pixels(),
+        .image_width = @intCast(target.width),
+        .image_height = @intCast(target.height),
+        .objects = objects,
+        .lights = lights,
+        .camera = camera,
+        .pixel_block = pixel_block,
+        .aspect_ratio = @as(f32, @floatFromInt(target.width)) / @as(f32, @floatFromInt(target.height)),
+        .perspective_scale = @tan(std.math.pi / 6.0),
+    };
 
-    // 'std.Io.Group' agrupa tareas concurrentes para esperar su finalización conjunta.
+    // Dividimos filas de BLOQUES para que ninguna franja corte un bloque de píxeles.
+    const block_rows = std.math.divCeil(usize, job.image_height, pixel_block) catch unreachable;
+    const workers = @max(1, @min(worker_count, block_rows));
     var group: std.Io.Group = .init;
     defer group.cancel(io);
 
-    // Despachamos los trabajadores secundarios al pool de hilos:
-    for (1..workers) |_| {
-        // group.concurrent delega RenderJob.work a un hilo en segundo plano.
-        group.concurrent(io, RenderJob.work, .{&job}) catch break;
+    for (0..workers) |i| {
+        const first_y = (block_rows * i / workers) * pixel_block;
+        const end_y = @min((block_rows * (i + 1) / workers) * pixel_block, job.image_height);
+
+        if (i == workers - 1) {
+            // El hilo principal también pinta una franja.
+            job.renderStripe(first_y, end_y);
+        } else {
+            // Si el pool no puede iniciar la tarea, pintamos esa franja aquí.
+            group.concurrent(io, RenderJob.renderStripe, .{ &job, first_y, end_y }) catch {
+                job.renderStripe(first_y, end_y);
+            };
+        }
     }
 
-    // El hilo principal NO se queda ocioso esperando; también ejecuta RenderJob.work
-    // para contribuir procesando franjas pendientes.
-    job.work();
-
-    // BARRERA DE SINCRONIZACIÓN:
-    // Espera obligatoria hasta que todos los hilos secundarios terminen su trabajo.
-    // Solo después de esta línea está garantizado que el fotograma está 100% completo.
+    // No mostrar ni modificar el fotograma hasta que todas las franjas terminen.
     try group.await(io);
 }
 
@@ -356,6 +311,39 @@ fn renderReference(target: *Framebuffer, objects: []const Forma, lights: []const
                 for (screen_x..@min(screen_x + pixel_block, reference_width)) |x| {
                     try target.set_pixel(@intCast(x), @intCast(y));
                 }
+            }
+        }
+    }
+}
+
+// Compara el resultado concurrente con el render secuencial, sin abrir una ventana.
+test "franjas producen los mismos pixeles que el render secuencial" {
+    var threaded: std.Io.Threaded = .init(std.testing.allocator, .{});
+    defer threaded.deinit();
+    const camera: Camera = .init(.{ .x = 0, .y = 0, .z = 10 }, .zero());
+    const objects = [_]Forma{.{ .Sphere = .{
+        .center = .zero(),
+        .radius = 3,
+        .material = .{
+            .Color = .{ .x = 1, .y = 0.2, .z = 0.1 },
+            .Ambient = 0.5,
+            .Especular = 10,
+            .Refractive_index = 1,
+            .Propiedades = .{ .Albedo = 0.8, .Especular = 0, .Reflectividad = 0, .Transparencia = 0 },
+        },
+    } }};
+    var expected = Framebuffer.init(13, 11, .black, .white);
+    defer expected.deinit();
+    var actual = Framebuffer.init(13, 11, .white, .white);
+    defer actual.deinit();
+
+    for ([_]usize{ 1, 2, 4, 16 }) |block| {
+        try renderReference(&expected, &objects, &luces.lights, camera, block);
+        for ([_]usize{ 1, 2, 3, 32 }) |workers| {
+            for (0..3) |_| {
+                @memset(actual.pixels(), .white);
+                try render(threaded.io(), workers, &actual, &objects, &luces.lights, camera, block);
+                try std.testing.expectEqualSlices(rl.Color, expected.pixels(), actual.pixels());
             }
         }
     }
