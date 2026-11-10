@@ -11,16 +11,14 @@ const Mesh = @import("formas/modelos/mesh.zig").Mesh;
 const cast_ray = @import("raytracer/raytracer.zig").cast_ray;
 const V3ToColor = @import("raytracer/raytracer.zig").V3ToColor;
 
-const formas = @import("config/formas.zig");
 const luces = @import("config/luces.zig");
 const controls = @import("config/controls.zig");
+const nave_espacial = @import("config/nave_espacial.zig");
 
 const Clock = std.Io.Clock.real;
 
 const width = 1300;
 const height = 600;
-
-const near_distance: f32 = 70;
 
 pub fn main() !void {
 
@@ -54,41 +52,21 @@ pub fn main() !void {
     defer framebuffer.deinit();
     rl.setTargetFPS(60);
 
-    // Textura del plano
-    var floor_texture = Texture.load(
-        gpa,
-        formas.floor_texture_path,
-    ) catch |err| {
-        std.debug.print(
-            "No se pudo cargar la textura: {}\n",
-            .{err},
-        );
-        return err;
-    };
-    defer floor_texture.deinit();
-
     // Textura del modelo
     var model_texture = try Texture.load(
         gpa,
-        formas.model_texture_path,
+        nave_espacial.model_texture_path,
     );
     defer model_texture.deinit();
 
-    // Textura del cubo
-    var cube_texture = try Texture.load(
-        gpa,
-        formas.cube_texture_path,
-    );
-    defer cube_texture.deinit();
-
     // Modelo
-    const model_material = formas.modelMaterial(&model_texture);
+    const model_material = nave_espacial.material(&model_texture);
 
     // Cargar el modelo OBJ
     var mesh = try Mesh.loadObj(
         gpa,
         io,
-        formas.model_path,
+        nave_espacial.model_path,
         model_material,
     );
     defer mesh.deinit();
@@ -98,20 +76,16 @@ pub fn main() !void {
     // delta es la diferencia de tiempo entre el marco actual y el anterior
     var delta: i64 = 1;
 
-    // Creamos los objetos de la escena a partir del modelo y la textura del piso
-    const objects = formas.create(mesh, model_material, &floor_texture, &cube_texture);
+    // Escena mínima para validar el movimiento libre sin el costo adicional
+    // de los objetos reflectivos y transparentes de la demostración anterior.
+    const objects = [_]Forma{nave_espacial.create(mesh, model_material)};
 
-    // Inicializamos la cámara con la distancia inicial y los ángulos de rotación iniciales
-    var cameraDistance = controls.initial_distance;
+    // Cámara libre: comienza frente al koala y puede trasladarse en sus tres ejes locales.
     var camera: Camera = .init(.{
         .x = 0,
-        .y = 0,
-        .z = cameraDistance,
-    }, .zero());
-
-    // controles de la cámara: ángulos de rotación y distancia
-    var camera_x_angle = controls.initial_x_angle;
-    var camera_y_angle = controls.initial_y_angle;
+        .y = 15,
+        .z = 80,
+    }, .{ .x = 0, .y = 10, .z = 0 });
 
     // Render loop: mientras la ventana no se cierre, actualizamos la cámara y renderizamos la escena
     var has_rendered = false; // variable para saber si ya se ha renderizado al menos un fotograma
@@ -125,51 +99,58 @@ pub fn main() !void {
             last_frame_time = now;
         }
 
-        // COnstantes que controlan la velocidad de movimiento de la cámara y el zoom, y los límites de ángulo y distancia
-        const dt: f32 = @as(f32, @floatFromInt(delta)) / 1_000_000;
-        const old_x_angle = camera_x_angle;
-        const old_y_angle = camera_y_angle;
-        const old_distance = cameraDistance;
+        // Integración de cámara libre asistida por OpenAI Codex (2026-11-09).
+        // Movimiento local: WASD, espacio/control y boost con shift.
+        // Las flechas cambian yaw y pitch sin fijar la cámara al origen.
+        const dt = @min(
+            @as(f32, @floatFromInt(delta)) / 1_000_000,
+            1.0 / 15.0,
+        );
+        const speed = controls.move_speed * dt *
+            (if (rl.isKeyDown(controls.boost)) controls.boost_multiplier else 1);
+        const turn = controls.turn_speed * dt;
 
-        // Control de la cámara con las teclas WASD
-        if (rl.isKeyDown(controls.left) or rl.isKeyDown(controls.left_arrow)) {
-            camera_x_angle += controls.turn_speed * dt;
-        }
-        if (rl.isKeyDown(controls.right) or rl.isKeyDown(controls.right_arrow)) {
-            camera_x_angle -= controls.turn_speed * dt;
-        }
-        if (rl.isKeyDown(controls.up) or rl.isKeyDown(controls.up_arrow)) {
-            camera_y_angle += controls.turn_speed * dt;
-            camera_y_angle = @max(controls.y_angle_min, @min(controls.y_angle_max, camera_y_angle));
-        }
-        if (rl.isKeyDown(controls.down) or rl.isKeyDown(controls.down_arrow)) {
-            camera_y_angle -= controls.turn_speed * dt;
-            camera_y_angle = @max(controls.y_angle_min, @min(controls.y_angle_max, camera_y_angle));
-        }
+        var local_right: f32 = 0;
+        var local_up: f32 = 0;
+        var local_forward: f32 = 0;
+        var yaw: f32 = 0;
+        var pitch: f32 = 0;
 
-        // zoom con la rueda del mouse, con límites de distancia mínima y máxima
-        const wheel = rl.getMouseWheelMove();
-        cameraDistance = std.math.clamp(cameraDistance - wheel * controls.zoom_speed, controls.min_distance, controls.max_distance);
-        // Detectamos si la cámara se está moviendo comparando los ángulos y la distancia actuales con los anteriores
-        const moving = camera_x_angle != old_x_angle or
-            camera_y_angle != old_y_angle or cameraDistance != old_distance;
+        if (rl.isKeyDown(controls.left)) local_right -= speed;
+        if (rl.isKeyDown(controls.right)) local_right += speed;
+        if (rl.isKeyDown(controls.rise)) local_up += speed;
+        if (rl.isKeyDown(controls.descend)) local_up -= speed;
+        if (rl.isKeyDown(controls.forward)) local_forward += speed;
+        if (rl.isKeyDown(controls.backward)) local_forward -= speed;
 
-        // Actualizamos la posición de la cámara en función de los ángulos calculados
-        camera.Postition.x = @cos(camera_x_angle) * cameraDistance;
-        camera.Postition.y = @sin(camera_y_angle) * cameraDistance;
-        camera.Postition.z = @sin(camera_x_angle) * cameraDistance;
+        if (rl.isKeyDown(controls.look_left)) yaw -= turn;
+        if (rl.isKeyDown(controls.look_right)) yaw += turn;
+        if (rl.isKeyDown(controls.look_up)) pitch += turn;
+        if (rl.isKeyDown(controls.look_down)) pitch -= turn;
 
-        // Hacemos que la cámara mire hacia el origen (0, 0, 0)
-        camera.lookAt(.zero());
+        const moving = local_right != 0 or local_up != 0 or local_forward != 0 or
+            yaw != 0 or pitch != 0;
+        if (moving) {
+            camera.lookFree(yaw, pitch);
+            camera.moveLocal(local_right, local_up, local_forward);
+        }
 
         // Durante el movimiento usamos bloques grandes. Al detenerse, refinamos
         // una vez y reutilizamos esa imagen mientras la escena no cambie.
         const needs_render = !has_rendered or moving or was_moving;
         if (needs_render) { // si la cámara se está moviendo o es el primer fotograma, renderizamos la escena
-            // Elegimos el tamaño del bloque de píxeles según si la cámara se está moviendo o no, y según la distancia de la cámara al origen
-            const pixel_block: usize = if (moving) 4 else if (cameraDistance > near_distance) 2 else 1;
+            // El koala tiene 594 triángulos y todavía no hay BVH. Para que esta
+            // prueba sea interactiva usamos bloques grandes al volar y una
+            // resolución intermedia al detenernos. Más adelante el BVH permitirá
+            // volver a bloques de 1 píxel sin recorrer toda la malla por rayo.
+            const pixel_block: usize = if (moving) 8 else 4;
             // Renderizamos la escena usando ray tracing, con una franja horizontal fija por tarea
+            const render_start = Clock.now(io);
             try render(io, worker_count, &framebuffer, &objects, &luces.lights, camera, pixel_block);
+            if (!has_rendered) {
+                const elapsed_ms = render_start.durationTo(Clock.now(io)).toMilliseconds();
+                std.debug.print("Primer frame del koala: {} ms\n", .{elapsed_ms});
+            }
             has_rendered = true;
         }
         was_moving = moving; // actualizamos la variable was_moving para el siguiente fotograma
