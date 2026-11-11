@@ -7,9 +7,9 @@ const Mesh = @import("../formas/modelos/mesh.zig").Mesh;
 const V3FromColor = @import("../raytracer/raytracer.zig").V3FromColor;
 const htmlColor = @import("../raytracer/cute_colors.zig").htmlColor;
 
-pub const model_texture_path = "assets/koala/colormap.png";
+pub const model_texture_path = "assets/nave/texture.png";
 // Modelo extraído de https://kenney.nl/assets/cube-pets
-pub const model_path = "assets/koala/Untitled.obj";
+pub const model_path = "assets/nave/nave.obj";
 
 pub fn material(model_texture: *const Texture) Material {
     return .{

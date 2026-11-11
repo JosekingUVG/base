@@ -1,6 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const Texture = @import("textures.zig").Texture;
+const BackgroundTexture = @import("textures.zig").BackgroundTexture;
 const Forma = @import("../formas/formas.zig").Forma;
 const htmlColor = @import("cute_colors.zig").htmlColor;
 const obscured = @import("sombras.zig").obscured;
@@ -88,7 +89,7 @@ fn refract(incident: rl.Vector3, normal: rl.Vector3, refractive_index: f32) ?rl.
 }
 
 // Función que lanza un rayo desde el origen en la dirección dada, y devuelve el color resultante
-pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, lights: []const Light, max_recursion: usize) rl.Vector3 {
+pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, lights: []const Light, background: ?*const BackgroundTexture, max_recursion: usize) rl.Vector3 {
     // Buscamos la intersección más cercana del rayo con los objetos de la escena
     var closest_hit: ?Intersect = null;
     // z_buffer es la distancia al objeto más cercano que hemos encontrado hasta ahora
@@ -145,6 +146,7 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
                     reflect_direction,
                     objects,
                     lights,
+                    background,
                     max_recursion - 1, // recursión decreciente para evitar bucles infinitos
                 );
 
@@ -177,6 +179,7 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
                         refract_direction,
                         objects,
                         lights,
+                        background,
                         max_recursion - 1,
                     );
 
@@ -257,5 +260,9 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
         return color;
     }
 
-    return V3FromColor(htmlColor("#87ceeb")); // color de fondo: azul cielo
+    if (background) |image| {
+        return image.sampleDirection(direction);
+    }
+
+    return V3FromColor(htmlColor("#87ceeb"));
 }

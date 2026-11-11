@@ -6,6 +6,7 @@ const Forma = @import("formas/formas.zig").Forma;
 const Camera = @import("dominio/camera.zig").Camera;
 const Light = @import("raytracer/raytracer.zig").Light;
 const Texture = @import("raytracer/textures.zig").Texture;
+const BackgroundTexture = @import("raytracer/textures.zig").BackgroundTexture;
 const Mesh = @import("formas/modelos/mesh.zig").Mesh;
 
 const cast_ray = @import("raytracer/raytracer.zig").cast_ray;
@@ -19,6 +20,7 @@ const Clock = std.Io.Clock.real;
 
 const width = 1300;
 const height = 600;
+const background_texture_path = "assets/textures/hipp2.png";
 
 pub fn main() !void {
 
@@ -58,6 +60,11 @@ pub fn main() !void {
         nave_espacial.model_texture_path,
     );
     defer model_texture.deinit();
+
+    // Raylib carga el fondo como Texture2D y conserva una copia CPU para que
+    // los hilos del raytracer puedan consultar sus píxeles.
+    var background_texture = try BackgroundTexture.load(background_texture_path);
+    defer background_texture.deinit();
 
     // Modelo
     const model_material = nave_espacial.material(&model_texture);
@@ -146,7 +153,7 @@ pub fn main() !void {
             const pixel_block: usize = if (moving) 8 else 4;
             // Renderizamos la escena usando ray tracing, con una franja horizontal fija por tarea
             const render_start = Clock.now(io);
-            try render(io, worker_count, &framebuffer, &objects, &luces.lights, camera, pixel_block);
+            try render(io, worker_count, &framebuffer, &objects, &luces.lights, &background_texture, camera, pixel_block);
             if (!has_rendered) {
                 const elapsed_ms = render_start.durationTo(Clock.now(io)).toMilliseconds();
                 std.debug.print("Primer frame del koala: {} ms\n", .{elapsed_ms});
@@ -167,6 +174,7 @@ const RenderJob = struct {
     image_height: usize,
     objects: []const Forma,
     lights: []const Light,
+    background: ?*const BackgroundTexture,
     camera: Camera,
     pixel_block: usize,
     aspect_ratio: f32,
@@ -193,7 +201,7 @@ const RenderJob = struct {
                     .y = ray.x * camera.Right.y + ray.y * camera.Up.y + ray.z * camera.Forward.y,
                     .z = ray.x * camera.Right.z + ray.y * camera.Up.z + ray.z * camera.Forward.z,
                 };
-                const color = V3ToColor(cast_ray(camera.Postition, direction, job.objects, job.lights, 5));
+                const color = V3ToColor(cast_ray(camera.Postition, direction, job.objects, job.lights, job.background, 5));
                 const end_x = @min(screen_x + job.pixel_block, job.image_width);
                 for (screen_y..@min(screen_y + job.pixel_block, end_y)) |y| {
                     const row = y * job.image_width;
@@ -206,7 +214,7 @@ const RenderJob = struct {
 
 // === CONCURRENCIA: COORDINADOR DEL FOTOGRAMA (fn render) ===
 // Despacha el trabajo a los hilos y espera a que todos terminen antes de continuar.
-fn render(io: std.Io, worker_count: usize, target: *Framebuffer, objects: []const Forma, lights: []const Light, camera: Camera, pixel_block: usize) !void {
+fn render(io: std.Io, worker_count: usize, target: *Framebuffer, objects: []const Forma, lights: []const Light, background: ?*const BackgroundTexture, camera: Camera, pixel_block: usize) !void {
     std.debug.assert(pixel_block > 0);
     const job: RenderJob = .{
         .pixels = target.pixels(),
@@ -214,6 +222,7 @@ fn render(io: std.Io, worker_count: usize, target: *Framebuffer, objects: []cons
         .image_height = @intCast(target.height),
         .objects = objects,
         .lights = lights,
+        .background = background,
         .camera = camera,
         .pixel_block = pixel_block,
         .aspect_ratio = @as(f32, @floatFromInt(target.width)) / @as(f32, @floatFromInt(target.height)),
@@ -246,7 +255,7 @@ fn render(io: std.Io, worker_count: usize, target: *Framebuffer, objects: []cons
 }
 
 // Oráculo secuencial: conserva las operaciones de proyección del render original.
-fn renderReference(target: *Framebuffer, objects: []const Forma, lights: []const Light, camera: Camera, pixel_block: usize) !void {
+fn renderReference(target: *Framebuffer, objects: []const Forma, lights: []const Light, background: ?*const BackgroundTexture, camera: Camera, pixel_block: usize) !void {
     const reference_width: usize = @intCast(target.width);
     const reference_height: usize = @intCast(target.height);
     const width_f32: f32 = @floatFromInt(target.width);
@@ -285,7 +294,7 @@ fn renderReference(target: *Framebuffer, objects: []const Forma, lights: []const
                 .z = direction_from_camera.x * camera.Right.z + direction_from_camera.y * camera.Up.z + direction_from_camera.z * camera.Forward.z,
             };
 
-            const col = cast_ray(camera.Postition, direction, objects, lights, 5);
+            const col = cast_ray(camera.Postition, direction, objects, lights, background, 5);
             target.set_current_color(V3ToColor(col));
             // Un rayo pinta el bloque completo, incluso en los bordes.
             for (screen_y..@min(screen_y + pixel_block, reference_height)) |y| {
@@ -319,11 +328,11 @@ test "franjas producen los mismos pixeles que el render secuencial" {
     defer actual.deinit();
 
     for ([_]usize{ 1, 2, 4, 16 }) |block| {
-        try renderReference(&expected, &objects, &luces.lights, camera, block);
+        try renderReference(&expected, &objects, &luces.lights, null, camera, block);
         for ([_]usize{ 1, 2, 3, 32 }) |workers| {
             for (0..3) |_| {
                 @memset(actual.pixels(), .white);
-                try render(threaded.io(), workers, &actual, &objects, &luces.lights, camera, block);
+                try render(threaded.io(), workers, &actual, &objects, &luces.lights, null, camera, block);
                 try std.testing.expectEqualSlices(rl.Color, expected.pixels(), actual.pixels());
             }
         }

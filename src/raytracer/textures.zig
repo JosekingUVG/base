@@ -75,3 +75,59 @@ pub const Texture = struct {
         self.* = undefined;
     }
 };
+
+/// Fondo panorámico cargado mediante una Texture2D de raylib.
+/// La imagen conserva una copia en RAM porque el raytracer necesita leer
+/// píxeles desde la CPU; una Texture2D por sí sola vive en la GPU.
+pub const BackgroundTexture = struct {
+    texture: rl.Texture2D,
+    image: rl.Image,
+
+    pub fn load(path: [:0]const u8) !BackgroundTexture {
+        const texture = try rl.loadTexture(path);
+        errdefer rl.unloadTexture(texture);
+
+        const image = try rl.loadImageFromTexture(texture);
+
+        return .{
+            .texture = texture,
+            .image = image,
+        };
+    }
+
+    pub fn sampleDirection(
+        self: BackgroundTexture,
+        direction: rl.Vector3,
+    ) rl.Vector3 {
+        const normalized = direction.normalize();
+        const u = 0.5 + std.math.atan2(
+            normalized.z,
+            normalized.x,
+        ) / (2.0 * std.math.pi);
+        const v = 0.5 - std.math.asin(
+            @max(-1.0, @min(1.0, normalized.y)),
+        ) / std.math.pi;
+
+        const wrapped_u = u - @floor(u);
+        const clamped_v = @max(0.0, @min(1.0, v));
+        const x: i32 = @intFromFloat(
+            wrapped_u * @as(f32, @floatFromInt(self.image.width)),
+        );
+        const y: i32 = @intFromFloat(
+            clamped_v * @as(f32, @floatFromInt(self.image.height - 1)),
+        );
+        const pixel = rl.getImageColor(self.image, x, y);
+
+        return .{
+            .x = @as(f32, @floatFromInt(pixel.r)) / 255.0,
+            .y = @as(f32, @floatFromInt(pixel.g)) / 255.0,
+            .z = @as(f32, @floatFromInt(pixel.b)) / 255.0,
+        };
+    }
+
+    pub fn deinit(self: *BackgroundTexture) void {
+        rl.unloadImage(self.image);
+        rl.unloadTexture(self.texture);
+        self.* = undefined;
+    }
+};
