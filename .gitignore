@@ -30,4 +30,9 @@ assets/plane/*
 
 # 2. Ignorar todo el contenido del asset pack por defecto
 !assets/textures
+!assets/nave/
+!assets/nave/nave.blend
+!assets/nave/nave.blend1
+!assets/nave/nave.obj
+
 
