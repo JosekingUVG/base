@@ -5,6 +5,8 @@ const Forma = @import("../formas/formas.zig").Forma;
 const Material = @import("../raytracer/raytracer.zig").Material;
 const Texture = @import("../raytracer/textures.zig").Texture;
 const Mesh = @import("../formas/modelos/mesh.zig").Mesh;
+const Model = @import("../formas/modelos/models.zig").Model;
+const Camera = @import("../dominio/camera.zig").Camera;
 const V3FromColor = @import("../raytracer/raytracer.zig").V3FromColor;
 const htmlColor = @import("../raytracer/cute_colors.zig").htmlColor;
 
@@ -115,4 +117,52 @@ fn calculateBounds(mesh: Mesh) Bounds {
         .center = center,
         .radius = @sqrt(radius_squared),
     };
+}
+
+// Aplica a un vector el giro ocurrido entre ambas cámaras.
+pub fn followRotation(
+    vector: rl.Vector3,
+    initial: Camera,
+    current: Camera,
+) rl.Vector3 {
+    return current.Right.scale(vector.dotProduct(initial.Right))
+        .add(current.Up.scale(vector.dotProduct(initial.Up)))
+        .add(current.Forward.scale(vector.dotProduct(initial.Forward)));
+}
+
+/// Mantiene el modelo en la misma posición relativa a una cámara en tercera
+/// persona. También actualiza la esfera de descarte para que siga a la malla.
+pub fn followCamera(
+    model: *Model,
+    initial_model: Model,
+    initial_camera: Camera,
+    current_camera: Camera,
+) void {
+    model.position = current_camera.Postition.add(followRotation(
+        initial_model.position.subtract(initial_camera.Postition),
+        initial_camera,
+        current_camera,
+    ));
+
+    model.bounding_sphere.center = current_camera.Postition.add(followRotation(
+        initial_model.bounding_sphere.center.subtract(initial_camera.Postition),
+        initial_camera,
+        current_camera,
+    ));
+
+    model.axis_x = followRotation(
+        initial_model.axis_x,
+        initial_camera,
+        current_camera,
+    ).normalize();
+    model.axis_y = followRotation(
+        initial_model.axis_y,
+        initial_camera,
+        current_camera,
+    ).normalize();
+    model.axis_z = followRotation(
+        initial_model.axis_z,
+        initial_camera,
+        current_camera,
+    ).normalize();
 }

@@ -112,9 +112,9 @@ pub const Camera = struct {
         self.Up = self.Right.crossProduct(self.Forward).normalize();
     }
 
+    // https://es.wikipedia.org/wiki/F%C3%B3rmula_de_Euler-Rodrigues
     // Fórmula de Rodrigues. El eje debe estar normalizado.
     // Evita depender del nombre que tenga rotateByAxisAngle
-    // en la versión de tus bindings.
     fn rotate(v: rl.Vector3, axis: rl.Vector3, angle: f32) rl.Vector3 {
         const c = @cos(angle);
         const s = @sin(angle);

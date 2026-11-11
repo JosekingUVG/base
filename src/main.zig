@@ -16,11 +16,11 @@ const luces = @import("config/luces.zig");
 const controls = @import("config/controls.zig");
 const nave_espacial = @import("config/nave_espacial.zig");
 
-const Clock = std.Io.Clock.real;
+const Clock = std.Io.Clock.real; // Reloj de tiempo real para medir el tiempo entre fotogramas y calcular delta time (dt)
 
 const width = 1300;
 const height = 600;
-const background_texture_path = "assets/textures/hipp2.png";
+const background_texture_path = "assets/textures/hipp2.png"; //skybox de fondo panorámico para la escena, cargado como textura 2D y copiado a RAM para que los hilos del raytracer puedan leer sus píxeles.
 
 pub fn main() !void {
 
@@ -85,13 +85,15 @@ pub fn main() !void {
 
     // Escena mínima para validar el movimiento libre sin el costo adicional
     // de los objetos reflectivos y transparentes de la demostración anterior.
-    const objects = [_]Forma{nave_espacial.create(mesh, model_material)};
+    var objects = [_]Forma{nave_espacial.create(mesh, model_material)};
 
     // Vista inicial en tres cuartos: detrás y 30 grados debajo de la nave.
     var camera: Camera = .init(
         nave_espacial.initial_camera_position,
         nave_espacial.model_center,
     );
+    const initial_camera = camera;
+    const initial_model = objects[0].Model;
 
     // Render loop: mientras la ventana no se cierre, actualizamos la cámara y renderizamos la escena
     var has_rendered = false; // variable para saber si ya se ha renderizado al menos un fotograma
@@ -139,6 +141,15 @@ pub fn main() !void {
         if (moving) {
             camera.lookFree(yaw, pitch);
             camera.moveLocal(local_right, local_up, local_forward);
+
+            // La nave conserva su desplazamiento y orientación respecto de la
+            // cámara, como personaje controlado en tercera persona.
+            nave_espacial.followCamera(
+                &objects[0].Model,
+                initial_model,
+                initial_camera,
+                camera,
+            );
         }
 
         // Durante el movimiento usamos bloques grandes. Al detenerse, refinamos
