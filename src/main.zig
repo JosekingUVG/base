@@ -87,12 +87,11 @@ pub fn main() !void {
     // de los objetos reflectivos y transparentes de la demostración anterior.
     const objects = [_]Forma{nave_espacial.create(mesh, model_material)};
 
-    // Cámara libre: comienza frente al koala y puede trasladarse en sus tres ejes locales.
-    var camera: Camera = .init(.{
-        .x = 0,
-        .y = 15,
-        .z = 80,
-    }, .{ .x = 0, .y = 10, .z = 0 });
+    // Vista inicial en tres cuartos: detrás y 30 grados debajo de la nave.
+    var camera: Camera = .init(
+        nave_espacial.initial_camera_position,
+        nave_espacial.model_center,
+    );
 
     // Render loop: mientras la ventana no se cierre, actualizamos la cámara y renderizamos la escena
     var has_rendered = false; // variable para saber si ya se ha renderizado al menos un fotograma
