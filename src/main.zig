@@ -15,6 +15,7 @@ const V3ToColor = @import("raytracer/raytracer.zig").V3ToColor;
 const luces = @import("config/luces.zig");
 const controls = @import("config/controls.zig");
 const nave_espacial = @import("config/nave_espacial.zig");
+const formas = @import("config/formas.zig");
 
 const Clock = std.Io.Clock.real; // Reloj de tiempo real para medir el tiempo entre fotogramas y calcular delta time (dt)
 
@@ -61,7 +62,7 @@ pub fn main() !void {
     );
     defer model_texture.deinit();
 
-    // Raylib carga el fondo como Texture2D y conserva una copia CPU para que
+    // Raylib carga la imagen en RAM para que
     // los hilos del raytracer puedan consultar sus píxeles.
     var background_texture = try BackgroundTexture.load(background_texture_path);
     defer background_texture.deinit();
@@ -85,7 +86,10 @@ pub fn main() !void {
 
     // Escena mínima para validar el movimiento libre sin el costo adicional
     // de los objetos reflectivos y transparentes de la demostración anterior.
-    var objects = [_]Forma{nave_espacial.create(mesh, model_material)};
+    var objects = [_]Forma{
+        nave_espacial.create(mesh, model_material),
+        formas.createSun(),
+    };
 
     // Vista inicial en tres cuartos: detrás y 30 grados debajo de la nave.
     var camera: Camera = .init(

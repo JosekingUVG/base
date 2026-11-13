@@ -76,22 +76,17 @@ pub const Texture = struct {
     }
 };
 
-/// Fondo panorámico cargado mediante una Texture2D de raylib.
-/// La imagen conserva una copia en RAM porque el raytracer necesita leer
-/// píxeles desde la CPU; una Texture2D por sí sola vive en la GPU.
+/// Fondo panorámico conservado directamente en RAM para que el raytracer
+/// pueda consultar sus píxeles desde la CPU.
+///
+/// Referencia SkyBox: https://learnopengl.com/PBR/IBL/Diffuse-irradiance?utm
+/// https://chatgpt.com/share/e/6af6651c-9940-83e8-9098-6641c337a3b6
 pub const BackgroundTexture = struct {
-    texture: rl.Texture2D,
     image: rl.Image,
 
     pub fn load(path: [:0]const u8) !BackgroundTexture {
-        const texture = try rl.loadTexture(path);
-        errdefer rl.unloadTexture(texture);
-
-        const image = try rl.loadImageFromTexture(texture);
-
         return .{
-            .texture = texture,
-            .image = image,
+            .image = try rl.loadImage(path),
         };
     }
 
@@ -127,7 +122,6 @@ pub const BackgroundTexture = struct {
 
     pub fn deinit(self: *BackgroundTexture) void {
         rl.unloadImage(self.image);
-        rl.unloadTexture(self.texture);
         self.* = undefined;
     }
 };

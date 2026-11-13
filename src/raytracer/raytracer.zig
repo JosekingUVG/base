@@ -24,6 +24,9 @@ pub const Light = struct {
     Color: rl.Vector3,
     Position: rl.Vector3,
     Intensity: f32,
+
+    // Índice de la esfera que representa esta luz.
+    Object_index: ?usize = null,
 };
 
 // Material que representa las propiedades ópticas de una superfficie, en este caso, el entorno de la escena. Se utiliza para calcular la iluminación difusa y especular de los objetos en la escena.
@@ -204,14 +207,16 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
                 continue;
             }
 
-            const light_dir =
-                light.Position.subtract(hit.Punto).normalize();
+            // Referencia luz solar: https://chatgpt.com/share/e/6af66bec-4b98-83e8-b3f0-aa4db2cbd0ce
+            const to_light = light.Position.subtract(hit.Punto); // Vector desde el punto de intersección hacia la luz
+            const distance_squared = to_light.dotProduct(to_light); // producto punto a punto para obtener la distancia al cuadrado
+            const light_dir = to_light.normalize();
+
+            const received_intensity = // Distancia al cuadrado para simular la atenuación de la luz con la distancia.
+                light.Intensity / @max(distance_squared, 0.0001);
 
             const diffuse_intensity =
-                @max(
-                    light_dir.dotProduct(hit.Normal),
-                    0,
-                ) * light.Intensity;
+                @max(light_dir.dotProduct(hit.Normal), 0) * received_intensity;
 
             // Calculamos el color de la superficie iluminada por la luz, multiplicando el color de la superficie por el color de la luz.
             const illuminated_surface = rl.Vector3{
@@ -235,14 +240,9 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
             const specular_intensity =
                 std.math.pow(
                     f32,
-                    // Calculamos el coseno del ángulo entre la dirección de la vista y la dirección de reflexión de la luz.
-                    // Si el ángulo es pequeño, el coseno es cercano a 1 y la intensidad especular es alta. Si el ángulo es grande, el coseno es cercano a 0 y la intensidad especular es baja.
-                    @max(
-                        view_direction.dotProduct(reflection_dir),
-                        0,
-                    ),
+                    @max(view_direction.dotProduct(reflection_dir), 0),
                     mat.Especular,
-                ) * light.Intensity;
+                ) * received_intensity;
 
             // cAlculamos el color especular de la luz, multiplicando el color de la luz por la intensidad especular y por el color del material.
             const specular =
