@@ -62,6 +62,13 @@ pub fn main() !void {
     );
     defer model_texture.deinit();
 
+    // Textura de la esfera que representa visualmente al sol.
+    var sun_texture = try Texture.load(
+        gpa,
+        formas.sun_texture_path,
+    );
+    defer sun_texture.deinit();
+
     // Raylib carga la imagen en RAM para que
     // los hilos del raytracer puedan consultar sus píxeles.
     var background_texture = try BackgroundTexture.load(background_texture_path);
@@ -88,7 +95,7 @@ pub fn main() !void {
     // de los objetos reflectivos y transparentes de la demostración anterior.
     var objects = [_]Forma{
         nave_espacial.create(mesh, model_material),
-        formas.createSun(),
+        formas.createSun(&sun_texture),
     };
 
     // Vista inicial en tres cuartos: detrás y 30 grados debajo de la nave.

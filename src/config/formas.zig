@@ -30,7 +30,7 @@ pub const sun_position = rl.Vector3{ .x = 12.5, .y = 0, .z = -60 };
 /// La nave ocupa objects[0] y el sol ocupa objects[1].
 pub const sun_object_index: usize = 1;
 
-pub fn createSun() Forma {
+pub fn createSun(sun_texture: *const Texture) Forma {
     return .{
         .Sphere = .{
             .center = sun_position,
@@ -38,6 +38,7 @@ pub fn createSun() Forma {
             // Ambient = 1 hace que el sol sea emisivo visualmente: no depende de
             // recibir su propia luz para conservar su color.
             .material = .{
+                .Texture = sun_texture,
                 .Color = V3FromColor(htmlColor("#ffd27a")),
                 .Ambient = 1,
                 .Propiedades = .{
