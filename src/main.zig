@@ -166,30 +166,7 @@ pub fn main() !void {
             yaw != 0 or pitch != 0;
         if (moving) {
             camera.lookFree(yaw, pitch);
-
-            const desired_movement = camera.Right.scale(local_right)
-                .add(camera.Up.scale(local_up))
-                .add(camera.Forward.scale(local_forward));
-
-            var allowed_fraction: f32 = 1;
-            // La nave es el volumen que se mueve. Aunque la camara este lejos
-            // de ella, ambas recorren exactamente el mismo desplazamiento.
-            const ship_collider = objects[0].collider().?;
-
-            // objects[0] no se compara consigo mismo. El resto de formas aporta
-            // los obstaculos contra los que probamos la esfera de la nave.
-            for (objects[1..]) |object| {
-                const collider = object.collider() orelse continue;
-                const hit_fraction = collider.movementFractionFor(
-                    ship_collider,
-                    desired_movement,
-                ) orelse continue;
-                allowed_fraction = @min(allowed_fraction, hit_fraction);
-            }
-
-            camera.Postition = camera.Postition.add(
-                desired_movement.scale(allowed_fraction),
-            );
+            camera.moveLocal(local_right, local_up, local_forward);
 
             // La nave conserva su desplazamiento y orientación respecto de la
             // cámara, como personaje controlado en tercera persona.

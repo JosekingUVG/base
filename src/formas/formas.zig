@@ -6,7 +6,6 @@ const Plane = @import("plane.zig").Plane;
 const Triangle = @import("triangles.zig").Triangle;
 const Model = @import("modelos/models.zig").Model;
 const Cube = @import("cubo.zig").Cube;
-const Collider = @import("colisiones.zig").Collider;
 
 pub const Forma = union(enum) {
     Sphere: Sphere,
@@ -43,21 +42,4 @@ pub const Forma = union(enum) {
         }
     }
 
-    /// Volumen fisico aproximado de la forma. La representacion de colision
-    /// vive junto a las formas y es independiente de su material visual.
-    pub fn collider(self: Forma) ?Collider {
-        return switch (self) {
-            .Sphere => |sphere| .{
-                .center = sphere.center,
-                .radius = sphere.radius,
-            },
-            .Model => |model| .{
-                .center = model.bounding_sphere.center,
-                .radius = model.bounding_sphere.radius,
-            },
-            // Estas formas necesitaran su volumen correspondiente cuando se
-            // incorporen a la escena jugable.
-            .Plane, .Triangle, .Cube => null,
-        };
-    }
 };
