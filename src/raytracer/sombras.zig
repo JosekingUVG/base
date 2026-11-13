@@ -10,7 +10,7 @@ pub fn obscured(origin: rl.Vector3, light: Light, objects: []const Forma, normal
 
     const light_direction = point_to_light.normalize();
 
-    const shadow_origin = origin.add(normal.scale(0.001));
+    const shadow_origin = origin.add(normal.scale(1e-4)); // Desplazamos el origen del rayo ligeramente para evitar problemas de auto-intersección
 
     // Referencia luz solar: https://chatgpt.com/share/e/6af66bec-4b98-83e8-b3f0-aa4db2cbd0ce
 

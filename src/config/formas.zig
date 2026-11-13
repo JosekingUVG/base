@@ -8,6 +8,43 @@ const htmlColor = @import("../raytracer/cute_colors.zig").htmlColor;
 
 pub const sun_texture_path = "assets/textures/sun-texture.png";
 
+pub const PlanetSpec = struct {
+    texture_path: [:0]const u8,
+    position: rl.Vector3,
+    radius: f32,
+};
+
+/// Sistema planetario compacto. Las distancias orbitales aumentan desde
+/// Mercurio hasta Jupiter, aunque los tamanos estan exagerados para que los
+/// planetas sigan siendo visibles durante la navegacion.
+pub const planet_specs = [_]PlanetSpec{
+    .{
+        .texture_path = "assets/textures/mercury.png",
+        .position = .{ .x = 26.5, .y = 2, .z = -52 },
+        .radius = 1.3,
+    },
+    .{
+        .texture_path = "assets/textures/venus.png",
+        .position = .{ .x = -7.5, .y = -3, .z = -43 },
+        .radius = 2,
+    },
+    .{
+        .texture_path = "assets/textures/earth.png",
+        .position = .{ .x = 22.5, .y = 5, .z = -99 },
+        .radius = 2.1,
+    },
+    .{
+        .texture_path = "assets/textures/mars.png",
+        .position = .{ .x = 62.5, .y = 8, .z = -37 },
+        .radius = 1.6,
+    },
+    .{
+        .texture_path = "assets/textures/jupiter.png",
+        .position = .{ .x = -67.5, .y = -15, .z = -101 },
+        .radius = 6.5,
+    },
+};
+
 pub fn modelMaterial(model_texture: *const Texture) Material {
     return .{
         .Texture = model_texture,
@@ -48,6 +85,30 @@ pub fn createSun(sun_texture: *const Texture) Forma {
                     .Transparencia = 0,
                 },
                 .Especular = 1,
+                .Refractive_index = 1,
+            },
+        },
+    };
+}
+
+pub fn createPlanet(spec: PlanetSpec, texture: *const Texture) Forma {
+    return .{
+        .Sphere = .{
+            .center = spec.position,
+            .radius = spec.radius,
+            .material = .{
+                .Texture = texture,
+                .Color = V3FromColor(htmlColor("#fff")),
+                // Una contribucion pequena permite reconocer el planeta
+                // incluso cuando recibe la luz del sol en un angulo bajo.
+                .Ambient = 0.08,
+                .Propiedades = .{
+                    .Albedo = 0.9,
+                    .Especular = 0.05,
+                    .Reflectividad = 0,
+                    .Transparencia = 0,
+                },
+                .Especular = 24,
                 .Refractive_index = 1,
             },
         },

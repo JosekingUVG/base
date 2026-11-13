@@ -23,9 +23,9 @@ pub const model_scale: f32 = 12;
 /// Vista inicial: detrás de la nave, 30 grados por debajo y ligeramente
 /// desplazada hacia un costado para mostrar también su silueta lateral.
 pub const initial_camera_position = rl.Vector3{
-    .x = -120,
-    .y = 40,
-    .z = -30,
+    .x = -96,
+    .y = 34,
+    .z = -24,
 };
 
 pub fn material(model_texture: *const Texture) Material {

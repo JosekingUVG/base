@@ -213,7 +213,7 @@ pub fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Form
             const light_dir = to_light.normalize();
 
             const received_intensity = // Distancia al cuadrado para simular la atenuación de la luz con la distancia.
-                light.Intensity / @max(distance_squared, 0.0001);
+                light.Intensity / @max(distance_squared, 0.1);
 
             const diffuse_intensity =
                 @max(light_dir.dotProduct(hit.Normal), 0) * received_intensity;

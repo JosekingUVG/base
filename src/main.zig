@@ -69,6 +69,17 @@ pub fn main() !void {
     );
     defer sun_texture.deinit();
 
+    var planet_textures: [formas.planet_specs.len]Texture = undefined;
+    var loaded_planet_textures: usize = 0;
+    defer for (planet_textures[0..loaded_planet_textures]) |*texture| {
+        texture.deinit();
+    };
+
+    for (&planet_textures, formas.planet_specs) |*texture, spec| {
+        texture.* = try Texture.load(gpa, spec.texture_path);
+        loaded_planet_textures += 1;
+    }
+
     // Raylib carga la imagen en RAM para que
     // los hilos del raytracer puedan consultar sus píxeles.
     var background_texture = try BackgroundTexture.load(background_texture_path);
@@ -91,12 +102,16 @@ pub fn main() !void {
     // delta es la diferencia de tiempo entre el marco actual y el anterior
     var delta: i64 = 1;
 
-    // Escena mínima para validar el movimiento libre sin el costo adicional
-    // de los objetos reflectivos y transparentes de la demostración anterior.
-    var objects = [_]Forma{
-        nave_espacial.create(mesh, model_material),
-        formas.createSun(&sun_texture),
-    };
+    // Nave, sol y cinco planetas texturizados que forman la escena navegable.
+    var objects: [2 + formas.planet_specs.len]Forma = undefined;
+    objects[0] = nave_espacial.create(mesh, model_material);
+    objects[1] = formas.createSun(&sun_texture);
+    for (formas.planet_specs, 0..) |spec, index| {
+        objects[index + 2] = formas.createPlanet(
+            spec,
+            &planet_textures[index],
+        );
+    }
 
     // Vista inicial en tres cuartos: detrás y 30 grados debajo de la nave.
     var camera: Camera = .init(
@@ -151,7 +166,30 @@ pub fn main() !void {
             yaw != 0 or pitch != 0;
         if (moving) {
             camera.lookFree(yaw, pitch);
-            camera.moveLocal(local_right, local_up, local_forward);
+
+            const desired_movement = camera.Right.scale(local_right)
+                .add(camera.Up.scale(local_up))
+                .add(camera.Forward.scale(local_forward));
+
+            var allowed_fraction: f32 = 1;
+            // La nave es el volumen que se mueve. Aunque la camara este lejos
+            // de ella, ambas recorren exactamente el mismo desplazamiento.
+            const ship_collider = objects[0].collider().?;
+
+            // objects[0] no se compara consigo mismo. El resto de formas aporta
+            // los obstaculos contra los que probamos la esfera de la nave.
+            for (objects[1..]) |object| {
+                const collider = object.collider() orelse continue;
+                const hit_fraction = collider.movementFractionFor(
+                    ship_collider,
+                    desired_movement,
+                ) orelse continue;
+                allowed_fraction = @min(allowed_fraction, hit_fraction);
+            }
+
+            camera.Postition = camera.Postition.add(
+                desired_movement.scale(allowed_fraction),
+            );
 
             // La nave conserva su desplazamiento y orientación respecto de la
             // cámara, como personaje controlado en tercera persona.
@@ -171,7 +209,7 @@ pub fn main() !void {
             // prueba sea interactiva usamos bloques grandes al volar y una
             // resolución intermedia al detenernos. Más adelante el BVH permitirá
             // volver a bloques de 1 píxel sin recorrer toda la malla por rayo.
-            const pixel_block: usize = if (moving) 8 else 4;
+            const pixel_block: usize = if (moving) 4 else 2;
             // Renderizamos la escena usando ray tracing, con una franja horizontal fija por tarea
             const render_start = Clock.now(io);
             try render(io, worker_count, &framebuffer, &objects, &luces.lights, &background_texture, camera, pixel_block);
