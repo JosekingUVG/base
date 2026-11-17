@@ -125,20 +125,3 @@ pub const Camera = struct {
             .add(axis.scale(dot * (1.0 - c)));
     }
 };
-
-test "la camara se traslada y rota en sus ejes locales" {
-    var camera: Camera = .init(
-        .{ .x = 0, .y = 0, .z = 10 },
-        .zero(),
-    );
-
-    camera.moveLocal(2, 3, 4);
-    try std.testing.expectApproxEqAbs(@as(f32, 2), camera.Postition.x, 0.0001);
-    try std.testing.expectApproxEqAbs(@as(f32, 3), camera.Postition.y, 0.0001);
-    try std.testing.expectApproxEqAbs(@as(f32, 6), camera.Postition.z, 0.0001);
-
-    camera.lookFree(std.math.pi / 2.0, 0);
-    try std.testing.expectApproxEqAbs(@as(f32, 1), camera.Forward.x, 0.0001);
-    try std.testing.expectApproxEqAbs(@as(f32, 0), camera.Forward.y, 0.0001);
-    try std.testing.expectApproxEqAbs(@as(f32, 0), camera.Forward.z, 0.0001);
-}

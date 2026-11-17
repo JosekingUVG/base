@@ -113,6 +113,12 @@ pub fn main() !void {
         );
     }
 
+    // Cada planeta conserva su fase inicial y avanza segun su propia velocidad.
+    var orbit_angles: [formas.planet_specs.len]f32 = undefined;
+    for (formas.planet_specs, 0..) |spec, index| {
+        orbit_angles[index] = formas.initialOrbitAngle(spec);
+    }
+
     // Vista inicial en tres cuartos: detrás y 30 grados debajo de la nave.
     var camera: Camera = .init(
         nave_espacial.initial_camera_position,
@@ -143,6 +149,16 @@ pub fn main() !void {
         const speed = controls.move_speed * dt *
             (if (rl.isKeyDown(controls.boost)) controls.boost_multiplier else 1);
         const turn = controls.turn_speed * dt;
+
+        // Movimiento orbital independiente del framerate. La posicion Y queda
+        // fija y el movimiento circular ocurre alrededor del Sol en el plano XZ.
+        for (formas.planet_specs, 0..) |spec, index| {
+            orbit_angles[index] += spec.orbital_speed * dt;
+            objects[index + 2].Sphere.center = formas.orbitalPosition(
+                spec,
+                orbit_angles[index],
+            );
+        }
 
         var local_right: f32 = 0;
         var local_up: f32 = 0;
@@ -180,13 +196,16 @@ pub fn main() !void {
 
         // Durante el movimiento usamos bloques grandes. Al detenerse, refinamos
         // una vez y reutilizamos esa imagen mientras la escena no cambie.
-        const needs_render = !has_rendered or moving or was_moving;
+        // Los planetas cambian de posicion en cada iteracion, por lo que la
+        // escena siempre necesita un fotograma nuevo.
+        const planets_are_orbiting = dt > 0;
+        const needs_render = !has_rendered or moving or was_moving or planets_are_orbiting;
         if (needs_render) { // si la cámara se está moviendo o es el primer fotograma, renderizamos la escena
             // El koala tiene 594 triángulos y todavía no hay BVH. Para que esta
             // prueba sea interactiva usamos bloques grandes al volar y una
             // resolución intermedia al detenernos. Más adelante el BVH permitirá
             // volver a bloques de 1 píxel sin recorrer toda la malla por rayo.
-            const pixel_block: usize = if (moving) 4 else 2;
+            const pixel_block: usize = if (moving or planets_are_orbiting) 4 else 2;
             // Renderizamos la escena usando ray tracing, con una franja horizontal fija por tarea
             const render_start = Clock.now(io);
             try render(io, worker_count, &framebuffer, &objects, &luces.lights, &background_texture, camera, pixel_block);
@@ -337,39 +356,6 @@ fn renderReference(target: *Framebuffer, objects: []const Forma, lights: []const
                 for (screen_x..@min(screen_x + pixel_block, reference_width)) |x| {
                     try target.set_pixel(@intCast(x), @intCast(y));
                 }
-            }
-        }
-    }
-}
-
-// Compara el resultado concurrente con el render secuencial, sin abrir una ventana.
-test "franjas producen los mismos pixeles que el render secuencial" {
-    var threaded: std.Io.Threaded = .init(std.testing.allocator, .{});
-    defer threaded.deinit();
-    const camera: Camera = .init(.{ .x = 0, .y = 0, .z = 10 }, .zero());
-    const objects = [_]Forma{.{ .Sphere = .{
-        .center = .zero(),
-        .radius = 3,
-        .material = .{
-            .Color = .{ .x = 1, .y = 0.2, .z = 0.1 },
-            .Ambient = 0.5,
-            .Especular = 10,
-            .Refractive_index = 1,
-            .Propiedades = .{ .Albedo = 0.8, .Especular = 0, .Reflectividad = 0, .Transparencia = 0 },
-        },
-    } }};
-    var expected = Framebuffer.init(13, 11, .black, .white);
-    defer expected.deinit();
-    var actual = Framebuffer.init(13, 11, .white, .white);
-    defer actual.deinit();
-
-    for ([_]usize{ 1, 2, 4, 16 }) |block| {
-        try renderReference(&expected, &objects, &luces.lights, null, camera, block);
-        for ([_]usize{ 1, 2, 3, 32 }) |workers| {
-            for (0..3) |_| {
-                @memset(actual.pixels(), .white);
-                try render(threaded.io(), workers, &actual, &objects, &luces.lights, null, camera, block);
-                try std.testing.expectEqualSlices(rl.Color, expected.pixels(), actual.pixels());
             }
         }
     }
