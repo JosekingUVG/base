@@ -20,6 +20,7 @@ pub const PlanetSpec = struct {
 /// Sistema planetario compacto. Las distancias orbitales aumentan desde
 /// Mercurio hasta Jupiter, aunque los tamanos estan exagerados para que los
 /// planetas sigan siendo visibles durante la navegacion.
+/// texturas: https://space.jpl.nasa.gov/tmaps/
 pub const planet_specs = [_]PlanetSpec{
     .{
         .texture_path = "assets/textures/mercury.png",

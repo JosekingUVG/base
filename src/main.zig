@@ -205,7 +205,7 @@ pub fn main() !void {
             // prueba sea interactiva usamos bloques grandes al volar y una
             // resolución intermedia al detenernos. Más adelante el BVH permitirá
             // volver a bloques de 1 píxel sin recorrer toda la malla por rayo.
-            const pixel_block: usize = if (moving or planets_are_orbiting) 4 else 2;
+            const pixel_block: usize = if (moving or planets_are_orbiting) 2 else 1;
             // Renderizamos la escena usando ray tracing, con una franja horizontal fija por tarea
             const render_start = Clock.now(io);
             try render(io, worker_count, &framebuffer, &objects, &luces.lights, &background_texture, camera, pixel_block);
